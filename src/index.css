@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #7950F2;
+  --color-primary-hover: #6741D9;
+  --color-primary-soft: #F3F0FF;
+  
+  --color-page: #F8FAFF;
+  --color-surface: #FFFFFF;
+  --color-subtle: #F5F7FC;
+  --color-border: #EDF0F6;
+  
+  --color-text-main: #25324B;
+  --color-text-secondary: #64748B;
+  --color-text-muted: #8993A7;
+  
+  --color-success: #20C997;
+  --color-success-bg: #E6FCF5;
+  --color-success-text: #087F5B;
+  
+  --color-warning: #FFB347;
+  --color-warning-bg: #FFF4E6;
+  --color-warning-text: #9A4D00;
+  
+  --color-info: #4DABF7;
+  --color-info-bg: #E7F5FF;
+  --color-info-text: #1864AB;
+  
+  --color-project: #F06595;
+  --color-project-bg: #FFF0F6;
+  --color-project-text: #C2255C;
+  
+  --color-error: #DC2626;
+  --color-error-bg: #FEF2F2;
+  --color-error-text: #991B1B;
+
+  --color-track: #EEF1F7;
+  
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  --shadow-card: 0 2px 12px rgba(30, 41, 59, 0.04);
+}
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #25324B;
+  background-color: #F8FAFF;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Utilities for Design System Consistency */
+.card-shadow {
+  box-shadow: 0 2px 12px rgba(30, 41, 59, 0.04);
+}
+
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid #7950F2;
+  outline-offset: 2px;
+}
+
+/* Linear Gradient for promotional / illustration cards */
+.hero-gradient {
+  background: linear-gradient(135deg, #F3F0FF 0%, #E4DEFF 100%);
+}
+
+/* Custom Scrollbar for clean aesthetics */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F5F7FC;
+}
+::-webkit-scrollbar-thumb {
+  background: #EDF0F6;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8993A7;
+}
+
+/* Smooth Interactive transitions */
+button, a, input, select, textarea {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
