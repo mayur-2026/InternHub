@@ -279,3 +279,4 @@ ON CONFLICT (id) DO UPDATE SET
   estimated_hours = EXCLUDED.estimated_hours, 
   tech_stack = EXCLUDED.tech_stack, 
   deliverables = EXCLUDED.deliverables;
+
