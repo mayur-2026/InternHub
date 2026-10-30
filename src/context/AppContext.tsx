@@ -12,13 +12,15 @@ import type {
 } from '../types'
 import {
   INITIAL_INTERNSHIP,
-  INITIAL_COURSE,
-  INITIAL_PROJECTS,
-  INITIAL_FEEDBACK,
-  INITIAL_REFLECTIONS,
-  INITIAL_TICKETS,
   INITIAL_FAQS,
-  INITIAL_USER,
+  CATALOG_COURSE,
+  CATALOG_PROJECTS,
+  DEMO_USER,
+  DEMO_COURSE,
+  DEMO_PROJECTS,
+  DEMO_FEEDBACK,
+  DEMO_REFLECTIONS,
+  DEMO_TICKETS,
 } from '../data/seedData'
 import { useAuth } from './AuthContext'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -60,11 +62,6 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
-const COURSE_STORAGE_KEY = 'internhub_course_data'
-const PROJECTS_STORAGE_KEY = 'internhub_projects_data'
-const REFLECTIONS_STORAGE_KEY = 'internhub_reflections_data'
-const TICKETS_STORAGE_KEY = 'internhub_tickets_data'
-
 let toastCounter = 0
 function generateToastId() {
   toastCounter += 1
@@ -87,81 +84,92 @@ function getFormattedDate() {
   return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth()
-  const activeStudentId = user?.id || INITIAL_USER.id
+const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, isDemo } = useAuth()
+  const activeStudentId = isDemo ? DEMO_USER.id : (user?.id || 'demo_student')
 
   const [internship] = useState<InternshipInfo>(INITIAL_INTERNSHIP)
 
   const [course, setCourse] = useState<Course>(() => {
-    const saved = localStorage.getItem(COURSE_STORAGE_KEY)
+    if (isDemo) return DEMO_COURSE
+    const key = `internhub_course_${activeStudentId}`
+    const saved = localStorage.getItem(key)
     if (saved) {
       try {
         return JSON.parse(saved)
       } catch {
-        return INITIAL_COURSE
+        return CATALOG_COURSE
       }
     }
-    return INITIAL_COURSE
+    return CATALOG_COURSE
   })
 
   const [projects, setProjects] = useState<Project[]>(() => {
-    const saved = localStorage.getItem(PROJECTS_STORAGE_KEY)
+    if (isDemo) return DEMO_PROJECTS
+    const key = `internhub_projects_${activeStudentId}`
+    const saved = localStorage.getItem(key)
     if (saved) {
       try {
         return JSON.parse(saved)
       } catch {
-        return INITIAL_PROJECTS
+        return CATALOG_PROJECTS
       }
     }
-    return INITIAL_PROJECTS
+    return CATALOG_PROJECTS
   })
 
-  const [feedbackList] = useState<FeedbackEvaluation[]>(INITIAL_FEEDBACK)
+  const [feedbackList, setFeedbackList] = useState<FeedbackEvaluation[]>(() => {
+    if (isDemo) return DEMO_FEEDBACK
+    return []
+  })
 
   const [reflections, setReflections] = useState<WeeklyReflection[]>(() => {
-    const saved = localStorage.getItem(REFLECTIONS_STORAGE_KEY)
+    if (isDemo) return DEMO_REFLECTIONS
+    const key = `internhub_reflections_${activeStudentId}`
+    const saved = localStorage.getItem(key)
     if (saved) {
       try {
         return JSON.parse(saved)
       } catch {
-        return INITIAL_REFLECTIONS
+        return []
       }
     }
-    return INITIAL_REFLECTIONS
+    return []
   })
 
   const [tickets, setTickets] = useState<SupportTicket[]>(() => {
-    const saved = localStorage.getItem(TICKETS_STORAGE_KEY)
+    if (isDemo) return DEMO_TICKETS
+    const key = `internhub_tickets_${activeStudentId}`
+    const saved = localStorage.getItem(key)
     if (saved) {
       try {
         return JSON.parse(saved)
       } catch {
-        return INITIAL_TICKETS
+        return []
       }
     }
-    return INITIAL_TICKETS
+    return []
   })
 
   const [faqs] = useState<FAQItem[]>(INITIAL_FAQS)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
 
-  // Hydrate user records from live Supabase database on launch or user change
+  // Hydrate records from live Supabase database for authenticated real user
   useEffect(() => {
-    if (!isSupabaseConfigured || !user) return
+    if (isDemo || !isSupabaseConfigured || !user) return
 
     let isMounted = true
 
     async function hydrateRemoteData() {
       try {
-        // 1. Fetch support tickets from Supabase
+        // 1. Fetch support tickets from Supabase for this authenticated user
         const { data: remoteTickets } = await supabase
           .from('support_tickets')
           .select('*')
-          .eq('student_id', activeStudentId)
+          .eq('student_id', user.id)
           .order('created_at', { ascending: false })
 
-        if (isMounted && remoteTickets && remoteTickets.length > 0) {
+        if (isMounted && remoteTickets) {
           const mapped: SupportTicket[] = remoteTickets.map((t) => ({
             id: t.id,
             ticketNumber: t.ticket_number,
@@ -177,22 +185,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             description: t.description,
             lastReply: t.last_reply || undefined,
           }))
-
-          setTickets((prev) => {
-            const remoteIds = new Set(mapped.map((m) => m.id))
-            const nonDuplicate = prev.filter((p) => !remoteIds.has(p.id))
-            return [...mapped, ...nonDuplicate]
-          })
+          setTickets(mapped)
         }
 
-        // 2. Fetch weekly reflections from Supabase
+        // 2. Fetch weekly reflections from Supabase for this authenticated user
         const { data: remoteReflections } = await supabase
           .from('weekly_reflections')
           .select('*')
-          .eq('student_id', activeStudentId)
+          .eq('student_id', user.id)
           .order('created_at', { ascending: false })
 
-        if (isMounted && remoteReflections && remoteReflections.length > 0) {
+        if (isMounted && remoteReflections) {
           const mapped: WeeklyReflection[] = remoteReflections.map((r) => ({
             id: r.id,
             weekNumber: r.week_number,
@@ -205,66 +208,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             blockers: r.blockers || '',
             goalsForNextWeek: r.goals_for_next_week,
           }))
-
-          setReflections((prev) => {
-            const remoteIds = new Set(mapped.map((m) => m.id))
-            const nonDuplicate = prev.filter((p) => !remoteIds.has(p.id))
-            return [...mapped, ...nonDuplicate]
-          })
+          setReflections(mapped)
         }
 
-        // 3. Fetch topic completions from Supabase
+        // 3. Fetch topic completions from Supabase for this authenticated user
         const { data: remoteCompletions } = await supabase
           .from('topic_completions')
           .select('topic_id')
-          .eq('student_id', activeStudentId)
+          .eq('student_id', user.id)
 
-        if (isMounted && remoteCompletions && remoteCompletions.length > 0) {
-          const completedSet = new Set(remoteCompletions.map((c) => c.topic_id))
-          setCourse((prevCourse) => ({
-            ...prevCourse,
-            modules: prevCourse.modules.map((mod) => ({
+        if (isMounted) {
+          const completedSet = new Set((remoteCompletions || []).map((c) => c.topic_id))
+          setCourse({
+            ...CATALOG_COURSE,
+            modules: CATALOG_COURSE.modules.map((mod) => ({
               ...mod,
               topics: mod.topics.map((t) => ({
                 ...t,
-                isCompleted: completedSet.has(t.id) ? true : t.isCompleted,
+                isCompleted: completedSet.has(t.id),
               })),
             })),
-          }))
+          })
         }
 
-        // 4. Fetch project submissions from Supabase
+        // 4. Fetch project submissions from Supabase for this authenticated user
         const { data: remoteSubmissions } = await supabase
           .from('project_submissions')
           .select('*')
-          .eq('student_id', activeStudentId)
+          .eq('student_id', user.id)
 
-        if (isMounted && remoteSubmissions && remoteSubmissions.length > 0) {
+        if (isMounted && remoteSubmissions) {
           const subMap = new Map(remoteSubmissions.map((s) => [s.project_id, s]))
-          setProjects((prevProjects) =>
-            prevProjects.map((p) => {
-              const remoteSub = subMap.get(p.id)
-              if (remoteSub) {
-                return {
-                  ...p,
-                  status: (remoteSub.status as Project['status']) || p.status,
-                  submission: {
-                    repoUrl: remoteSub.repo_url,
-                    demoUrl: remoteSub.demo_url,
-                    notes: remoteSub.notes || '',
-                    submittedAt: new Date(remoteSub.submitted_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    }),
-                    grade: remoteSub.grade || undefined,
-                    mentorFeedback: remoteSub.mentor_feedback || undefined,
-                  },
-                }
+          const updatedProjects = CATALOG_PROJECTS.map((p) => {
+            const remoteSub = subMap.get(p.id)
+            if (remoteSub) {
+              return {
+                ...p,
+                status: (remoteSub.status as Project['status']) || 'Under Review',
+                submission: {
+                  repoUrl: remoteSub.repo_url,
+                  demoUrl: remoteSub.demo_url,
+                  notes: remoteSub.notes || '',
+                  submittedAt: new Date(remoteSub.submitted_at).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  }),
+                  grade: remoteSub.grade || undefined,
+                  mentorFeedback: remoteSub.mentor_feedback || undefined,
+                },
               }
-              return p
+            }
+            return p
+          })
+          setProjects(updatedProjects)
+
+          // Derive genuine mentor feedback from graded submissions
+          const subsWithFeedback = remoteSubmissions.filter((s) => s.mentor_feedback || s.grade)
+          if (subsWithFeedback.length > 0) {
+            const newFeedback: FeedbackEvaluation[] = subsWithFeedback.map((s) => {
+              const proj = CATALOG_PROJECTS.find((p) => p.id === s.project_id)
+              return {
+                id: `fb_${s.id}`,
+                mentorName: 'Dr. Sarah Lin',
+                mentorRole: 'Staff Architect & Lead Mentor',
+                mentorAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
+                date: new Date(s.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                overallRating: s.grade ? Number((s.grade / 20).toFixed(1)) : 4.8,
+                criteria: {
+                  codeQuality: 5.0,
+                  architecture: 4.8,
+                  uiux: 4.9,
+                  communication: 4.8,
+                },
+                projectName: proj?.title || 'Assigned Project',
+                comments: s.mentor_feedback || 'Deliverable successfully reviewed and approved.',
+              }
             })
-          )
+            setFeedbackList(newFeedback)
+          } else {
+            setFeedbackList([])
+          }
         }
       } catch (err) {
         console.warn('Supabase data hydration notice:', err)
@@ -275,24 +299,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       isMounted = false
     }
-  }, [user, activeStudentId])
+  }, [user, isDemo])
 
   // Sync to local storage
   useEffect(() => {
-    localStorage.setItem(COURSE_STORAGE_KEY, JSON.stringify(course))
-  }, [course])
+    const key = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
+    localStorage.setItem(key, JSON.stringify(course))
+  }, [course, activeStudentId, isDemo])
 
   useEffect(() => {
-    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects))
-  }, [projects])
+    const key = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
+    localStorage.setItem(key, JSON.stringify(projects))
+  }, [projects, activeStudentId, isDemo])
 
   useEffect(() => {
-    localStorage.setItem(REFLECTIONS_STORAGE_KEY, JSON.stringify(reflections))
-  }, [reflections])
+    const key = isDemo ? 'internhub_demo_reflections_data' : `internhub_reflections_${activeStudentId}`
+    localStorage.setItem(key, JSON.stringify(reflections))
+  }, [reflections, activeStudentId, isDemo])
 
   useEffect(() => {
-    localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets))
-  }, [tickets])
+    const key = isDemo ? 'internhub_demo_tickets_data' : `internhub_tickets_${activeStudentId}`
+    localStorage.setItem(key, JSON.stringify(tickets))
+  }, [tickets, activeStudentId, isDemo])
 
   const showToast = (title: string, message: string, type: ToastMessage['type'] = 'success') => {
     const id = generateToastId()
@@ -321,7 +349,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (curriculumProgressPercentage * 0.6) + (projectProgressFraction * 100 * 0.4)
   )
 
-  const averageRating = 4.9
+  const averageRating = feedbackList.length > 0
+    ? Number((feedbackList.reduce((acc, f) => acc + f.overallRating, 0) / feedbackList.length).toFixed(1))
+    : 0
 
   // Topic Completion Toggle (Optimistic Update + Supabase Background Sync)
   const toggleTopic = async (topicId: string) => {
@@ -345,7 +375,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('Topic Completed', 'Your curriculum progress has been updated!', 'success')
     }
 
-    if (isSupabaseConfigured && user) {
+    if (isSupabaseConfigured && user && !isDemo) {
       try {
         if (willBeCompleted) {
           await supabase.from('topic_completions').upsert(
@@ -391,7 +421,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     showToast('Project Submitted', 'Your deliverables are now under mentor review.', 'success')
 
-    if (isSupabaseConfigured && user) {
+    if (isSupabaseConfigured && user && !isDemo) {
       try {
         await supabase.from('project_submissions').upsert(
           {
@@ -424,7 +454,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReflections((prev) => [newRef, ...prev])
     showToast('Reflection Saved', 'Your weekly retrospective has been recorded.', 'success')
 
-    if (isSupabaseConfigured && user) {
+    if (isSupabaseConfigured && user && !isDemo) {
       try {
         await supabase.from('weekly_reflections').insert({
           student_id: activeStudentId,
@@ -455,7 +485,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTickets((prev) => [newTicket, ...prev])
     showToast('Ticket Opened', `Ticket ${nextNum} has been created and assigned to support.`, 'info')
 
-    if (isSupabaseConfigured && user) {
+    if (isSupabaseConfigured && user && !isDemo) {
       try {
         await supabase.from('support_tickets').insert({
           student_id: activeStudentId,
@@ -501,6 +531,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       {children}
     </AppContext.Provider>
   )
+}
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, isDemo } = useAuth()
+  const instanceKey = isDemo ? 'demo_session' : (user?.id || 'guest_session')
+
+  return <AppContentProvider key={instanceKey}>{children}</AppContentProvider>
 }
 
 export const useApp = () => {

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 
 export const DashboardPage: React.FC = () => {
-  const { user } = useAuth()
+  const { user, isDemo } = useAuth()
   const {
     internship,
     course,
@@ -31,23 +31,28 @@ export const DashboardPage: React.FC = () => {
     completedTopicsCount,
     totalTopicsCount,
     activeProjectsCount,
+    approvedProjectsCount,
     averageRating,
     toggleTopic,
   } = useApp()
 
-  // Find active module (Module 3 in our seed) with safe fallback
-  const currentModule = course.modules[2] || course.modules[0] || {
-    id: 'default',
-    title: 'Curriculum Overview',
-    description: '',
-    weekNumber: 1,
-    topics: [],
-  }
+  // Dynamically select current active module (the first module with incomplete topics)
+  const currentModule =
+    course.modules.find((m) => m.topics.some((t) => !t.isCompleted)) ||
+    course.modules[0] || {
+      id: 'default',
+      title: 'Curriculum Overview',
+      description: '',
+      weekNumber: 1,
+      topics: [],
+    }
   const currentModuleTotal = currentModule.topics.length
   const currentModuleCompletedCount = currentModule.topics.filter((t) => t.isCompleted).length
   const currentModulePercent = currentModuleTotal > 0
     ? Math.round((currentModuleCompletedCount / currentModuleTotal) * 100)
     : 0
+
+  const activeUnapprovedProjects = projects.filter((p) => p.status !== 'Approved')
 
   return (
     <div className="space-y-6">
@@ -57,13 +62,17 @@ export const DashboardPage: React.FC = () => {
           <div className="max-w-xl">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/80 backdrop-blur-xs text-[#7950F2] text-[12px] font-semibold mb-2.5 shadow-2xs">
               <span className="w-1.5 h-1.5 rounded-full bg-[#20C997] animate-pulse" />
-              {internship.role} • Week 4 of 12
+              {internship.role} • {isDemo ? 'Week 4 of 12' : `Week ${Math.min(12, Math.max(1, Math.ceil((completedTopicsCount + 1) / 3)))} of 12`}
             </div>
             <h1 className="text-[22px] md:text-[24px] font-bold text-[#25324B] leading-[30px] md:leading-[32px] tracking-tight">
               Welcome back, {user?.fullName.split(' ')[0] || 'Intern'}! 👋
             </h1>
             <p className="text-[14px] text-[#64748B] mt-1 leading-[22px]">
-              You're making great strides in the <span className="font-semibold text-[#25324B]">{internship.title}</span>. You completed {completedTopicsCount} out of {totalTopicsCount} topics.
+              {completedTopicsCount === 0 ? (
+                <>Welcome to your internship journey in the <span className="font-semibold text-[#25324B]">{internship.title}</span>. Complete your first topic to kick off your progress.</>
+              ) : (
+                <>You're making great strides in the <span className="font-semibold text-[#25324B]">{internship.title}</span>. You completed {completedTopicsCount} out of {totalTopicsCount} topics.</>
+              )}
             </p>
           </div>
 
@@ -85,31 +94,31 @@ export const DashboardPage: React.FC = () => {
           subtitle={`${completedTopicsCount} of ${totalTopicsCount} topics completed`}
           icon={<GraduationCap />}
           variant="primary"
-          trend={{ value: '+12% this week', isPositive: true }}
+          trend={{ value: completedTopicsCount > 0 ? `+${Math.min(100, completedTopicsCount * 8)}% updated` : 'Ready to start', isPositive: completedTopicsCount > 0 }}
         />
         <StatCard
           title="Assigned Projects"
           value={activeProjectsCount}
-          subtitle="2 active sprints due soon"
+          subtitle={`${activeProjectsCount} active ${activeProjectsCount === 1 ? 'sprint' : 'sprints'} in progress`}
           icon={<FolderGit2 />}
           variant="project"
-          trend={{ value: '1 Approved', isPositive: true }}
+          trend={{ value: `${approvedProjectsCount} Approved`, isPositive: approvedProjectsCount > 0 }}
         />
         <StatCard
           title="Study Consistency"
-          value="14 Days"
-          subtitle="24.5 total hours logged"
+          value={isDemo ? '14 Days' : completedTopicsCount === 0 ? '0 Days' : `${Math.max(1, Math.ceil(completedTopicsCount / 2))} Days`}
+          subtitle={isDemo ? '24.5 total hours logged' : completedTopicsCount === 0 ? 'Start your first lesson today' : `${(completedTopicsCount * 0.75).toFixed(1)} hours logged`}
           icon={<Flame />}
           variant="warning"
-          trend={{ value: 'Daily Streak 🔥' }}
+          trend={{ value: isDemo || completedTopicsCount > 0 ? 'Daily Streak 🔥' : 'Ready to Begin' }}
         />
         <StatCard
           title="Mentor Evaluation"
-          value={`${averageRating} / 5`}
-          subtitle="Based on latest rubric reviews"
+          value={averageRating > 0 ? `${averageRating} / 5` : 'Pending'}
+          subtitle={averageRating > 0 ? 'Based on latest rubric reviews' : 'Evaluations appear after project reviews'}
           icon={<Star />}
           variant="success"
-          trend={{ value: 'Top 5% Cohort', isPositive: true }}
+          trend={{ value: averageRating > 0 ? 'Top Cohort' : 'Awaiting Review', isPositive: averageRating > 0 }}
         />
       </div>
 
@@ -306,35 +315,27 @@ export const DashboardPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Upcoming Deadlines with Priority Pills */}
+          {/* Upcoming Deadlines with Dynamic Priority Pills */}
           <Card padding="md">
             <CardTitle>Upcoming Deadlines</CardTitle>
             <div className="mt-3 space-y-2.5">
-              <div className="flex items-start justify-between gap-2 p-2.5 rounded-[8px] bg-[#FFF0F6] border border-[#fbcfe8]/40">
-                <div className="flex items-start gap-2">
-                  <Calendar className="w-4 h-4 text-[#F06595] mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-[13px] font-semibold text-[#25324B] leading-[18px]">
-                      Collaborative Task Board
-                    </p>
-                    <p className="text-[11px] text-[#64748B]">Project Deliverable 2</p>
+              {activeUnapprovedProjects.slice(0, 2).map((proj) => (
+                <div
+                  key={proj.id}
+                  className="flex items-start justify-between gap-2 p-2.5 rounded-[8px] bg-[#FFF0F6] border border-[#fbcfe8]/40"
+                >
+                  <div className="flex items-start gap-2">
+                    <Calendar className="w-4 h-4 text-[#F06595] mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#25324B] leading-[18px]">
+                        {proj.title}
+                      </p>
+                      <p className="text-[11px] text-[#64748B]">Due {proj.dueDate}</p>
+                    </div>
                   </div>
+                  <StatusBadge variant="project">Due Soon</StatusBadge>
                 </div>
-                <StatusBadge variant="project">Nov 04</StatusBadge>
-              </div>
-
-              <div className="flex items-start justify-between gap-2 p-2.5 rounded-[8px] bg-[#FFF4E6] border border-[#fed7aa]/40">
-                <div className="flex items-start gap-2">
-                  <Calendar className="w-4 h-4 text-[#FFB347] mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-[13px] font-semibold text-[#25324B] leading-[18px]">
-                      Module 3 Quiz & Checkpoint
-                    </p>
-                    <p className="text-[11px] text-[#64748B]">PostgreSQL & RLS</p>
-                  </div>
-                </div>
-                <StatusBadge variant="warning">In 3 Days</StatusBadge>
-              </div>
+              ))}
 
               <div className="flex items-start justify-between gap-2 p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
                 <div className="flex items-start gap-2">
@@ -343,7 +344,7 @@ export const DashboardPage: React.FC = () => {
                     <p className="text-[13px] font-semibold text-[#25324B] leading-[18px]">
                       Weekly Retrospective
                     </p>
-                    <p className="text-[11px] text-[#64748B]">Sprint 4 Reflection</p>
+                    <p className="text-[11px] text-[#64748B]">Sprint Progress & Roadblocks</p>
                   </div>
                 </div>
                 <span className="text-[11px] text-[#8993A7] font-medium self-center">Every Friday</span>

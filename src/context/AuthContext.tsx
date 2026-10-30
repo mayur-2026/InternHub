@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import type { UserProfile } from '../types'
-import { INITIAL_USER } from '../data/seedData'
+import { INITIAL_USER, DEMO_USER } from '../data/seedData'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 interface AuthContextType {
@@ -102,22 +102,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    const syncUser = (authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => {
+    const syncUser = async (authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => {
       const meta = authUser.user_metadata || {}
+      let profileFromDb: Partial<UserProfile> | null = null
+
+      if (isSupabaseConfigured) {
+        try {
+          const { data: dbProfile, error: dbError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authUser.id)
+            .maybeSingle()
+
+          if (!dbError && dbProfile) {
+            profileFromDb = {
+              fullName: dbProfile.full_name || undefined,
+              avatarUrl: dbProfile.avatar_url || undefined,
+              bio: dbProfile.bio ?? '',
+              university: dbProfile.university ?? '',
+              graduationYear: dbProfile.graduation_year ?? '',
+              githubUrl: dbProfile.github_url ?? '',
+              linkedinUrl: dbProfile.linkedin_url ?? '',
+              role: dbProfile.role || 'Student Intern',
+              track: dbProfile.track || 'Full-Stack Web Engineering',
+              joinedDate: dbProfile.created_at
+                ? new Date(dbProfile.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                : undefined,
+            }
+          } else {
+            // First time login - initialize clean record in Supabase
+            const fullName = String(meta.full_name || meta.name || authUser.email?.split('@')[0] || 'Student Intern')
+            const avatarUrl = String(meta.avatar_url || meta.picture || '')
+            await supabase.from('profiles').upsert(
+              {
+                id: authUser.id,
+                email: authUser.email || '',
+                full_name: fullName,
+                avatar_url: avatarUrl,
+                role: 'Student Intern',
+                track: 'Full-Stack Web Engineering',
+              },
+              { onConflict: 'id' }
+            )
+          }
+        } catch (err) {
+          console.warn('Profile sync notice:', err)
+        }
+      }
+
+      const defaultAvatar = `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80`
+
       const syncedUser: UserProfile = {
         id: authUser.id,
         email: authUser.email || 'user@gmail.com',
-        fullName: String(meta.full_name || meta.name || 'Google User'),
-        avatarUrl: String(meta.avatar_url || meta.picture || INITIAL_USER.avatarUrl),
-        bio: String(meta.bio || INITIAL_USER.bio),
-        university: String(meta.university || INITIAL_USER.university),
-        graduationYear: String(meta.graduationYear || INITIAL_USER.graduationYear),
-        githubUrl: String(meta.githubUrl || INITIAL_USER.githubUrl),
-        linkedinUrl: String(meta.linkedinUrl || INITIAL_USER.linkedinUrl),
-        role: 'Student Intern',
-        track: 'Full-Stack Web Engineering',
-        joinedDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        fullName:
+          profileFromDb?.fullName ||
+          String(meta.full_name || meta.name || authUser.email?.split('@')[0] || 'Student Intern'),
+        avatarUrl:
+          profileFromDb?.avatarUrl ||
+          String(meta.avatar_url || meta.picture || defaultAvatar),
+        bio: profileFromDb?.bio ?? '',
+        university: profileFromDb?.university ?? '',
+        graduationYear: profileFromDb?.graduationYear ?? '',
+        githubUrl: profileFromDb?.githubUrl ?? '',
+        linkedinUrl: profileFromDb?.linkedinUrl ?? '',
+        role: profileFromDb?.role || 'Student Intern',
+        track: profileFromDb?.track || 'Full-Stack Web Engineering',
+        joinedDate:
+          profileFromDb?.joinedDate ||
+          new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
       }
+
       setUser(syncedUser)
       setIsDemo(false)
       localStorage.removeItem(LOGGED_OUT_KEY)
@@ -198,10 +253,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true)
     setError(null)
     setTimeout(() => {
-      setUser(INITIAL_USER)
+      setUser(DEMO_USER)
       setIsDemo(true)
       localStorage.removeItem(LOGGED_OUT_KEY)
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(INITIAL_USER))
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(DEMO_USER))
       localStorage.setItem(DEMO_STORAGE_KEY, 'true')
       setLoading(false)
     }, 400)

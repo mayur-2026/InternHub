@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { useApp } from '../../context/AppContext'
 
 interface NavItem {
   name: string
@@ -21,19 +22,25 @@ interface NavItem {
   badge?: string
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { name: 'Dashboard', to: '/dashboard', icon: <LayoutDashboard className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
-  { name: 'My Internships', to: '/internships', icon: <Briefcase className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
-  { name: 'Learning', to: '/learning', icon: <GraduationCap className="w-[19px] h-[19px]" strokeWidth={1.75} />, badge: 'Active' },
-  { name: 'Projects', to: '/projects', icon: <FolderGit2 className="w-[19px] h-[19px]" strokeWidth={1.75} />, badge: '2 Due' },
-  { name: 'Progress', to: '/progress', icon: <TrendingUp className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
-  { name: 'Feedback', to: '/feedback', icon: <MessageSquare className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
-  { name: 'Support', to: '/support', icon: <HelpCircle className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
-  { name: 'Profile', to: '/profile', icon: <User className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
-]
-
 export const Sidebar: React.FC<{ onItemClick?: () => void }> = ({ onItemClick }) => {
   const { user, logout, isDemo } = useAuth()
+  const { activeProjectsCount } = useApp()
+
+  const navItems: NavItem[] = [
+    { name: 'Dashboard', to: '/dashboard', icon: <LayoutDashboard className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
+    { name: 'My Internships', to: '/internships', icon: <Briefcase className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
+    { name: 'Learning', to: '/learning', icon: <GraduationCap className="w-[19px] h-[19px]" strokeWidth={1.75} />, badge: 'Active' },
+    {
+      name: 'Projects',
+      to: '/projects',
+      icon: <FolderGit2 className="w-[19px] h-[19px]" strokeWidth={1.75} />,
+      badge: activeProjectsCount > 0 ? `${activeProjectsCount} Due` : undefined,
+    },
+    { name: 'Progress', to: '/progress', icon: <TrendingUp className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
+    { name: 'Feedback', to: '/feedback', icon: <MessageSquare className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
+    { name: 'Support', to: '/support', icon: <HelpCircle className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
+    { name: 'Profile', to: '/profile', icon: <User className="w-[19px] h-[19px]" strokeWidth={1.75} /> },
+  ]
 
   return (
     <aside className="w-[240px] h-full flex flex-col bg-white border-r border-[#EDF0F6] select-none">
@@ -58,7 +65,7 @@ export const Sidebar: React.FC<{ onItemClick?: () => void }> = ({ onItemClick })
           Main Navigation
         </div>
 
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

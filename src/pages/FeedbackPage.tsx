@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { PageHeader } from '../components/ui/FeedbackStates'
+import { PageHeader, EmptyState } from '../components/ui/FeedbackStates'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { Button } from '../components/ui/Button'
@@ -10,6 +10,7 @@ import {
   Calendar,
   Send,
   Sparkles,
+  MessageSquare,
 } from 'lucide-react'
 
 export const FeedbackPage: React.FC = () => {
@@ -43,14 +44,28 @@ export const FeedbackPage: React.FC = () => {
     setIsSubmitting(false)
   }
 
+  const hasReviews = feedbackList.length > 0
+  const avgCode = hasReviews
+    ? (feedbackList.reduce((acc, f) => acc + f.criteria.codeQuality, 0) / feedbackList.length).toFixed(1)
+    : '—'
+  const avgArch = hasReviews
+    ? (feedbackList.reduce((acc, f) => acc + f.criteria.architecture, 0) / feedbackList.length).toFixed(1)
+    : '—'
+  const avgUi = hasReviews
+    ? (feedbackList.reduce((acc, f) => acc + f.criteria.uiux, 0) / feedbackList.length).toFixed(1)
+    : '—'
+  const avgComm = hasReviews
+    ? (feedbackList.reduce((acc, f) => acc + f.criteria.communication, 0) / feedbackList.length).toFixed(1)
+    : '—'
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Mentor Feedback & Reviews"
         subtitle="Qualitative rubric assessments from your mentor and continuous weekly retrospectives."
         badge={
-          <StatusBadge variant="success" icon={<Star className="w-3.5 h-3.5" />}>
-            Cohort Avg: {averageRating} / 5.0
+          <StatusBadge variant={hasReviews ? 'success' : 'info'} icon={<Star className="w-3.5 h-3.5" />}>
+            {hasReviews ? `Cohort Avg: ${averageRating} / 5.0` : 'Reviews Pending'}
           </StatusBadge>
         }
       />
@@ -62,13 +77,22 @@ export const FeedbackPage: React.FC = () => {
             Standing & Standing Rating
           </span>
           <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-[32px] font-bold text-[#25324B]">{averageRating}</span>
-            <span className="text-[16px] text-[#64748B]">/ 5.0</span>
+            <span className="text-[32px] font-bold text-[#25324B]">
+              {hasReviews ? averageRating : '—'}
+            </span>
+            <span className="text-[16px] text-[#64748B]">{hasReviews ? '/ 5.0' : 'Pending'}</span>
           </div>
-          <p className="text-[12px] text-[#64748B] mt-1">Based on 2 evaluated sprint deliverables</p>
+          <p className="text-[12px] text-[#64748B] mt-1">
+            {hasReviews
+              ? `Based on ${feedbackList.length} evaluated sprint ${feedbackList.length === 1 ? 'deliverable' : 'deliverables'}`
+              : 'Evaluations appear after your first deliverable review'}
+          </p>
           <div className="mt-3 flex items-center gap-1 text-[#FFB347]">
             {[1, 2, 3, 4, 5].map((s) => (
-              <Star key={s} className="w-4 h-4 fill-[#FFB347]" />
+              <Star
+                key={s}
+                className={`w-4 h-4 ${hasReviews && averageRating >= s ? 'fill-[#FFB347]' : 'text-[#EDF0F6]'}`}
+              />
             ))}
           </div>
         </Card>
@@ -80,19 +104,19 @@ export const FeedbackPage: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
             <div className="p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
               <p className="text-[11px] font-semibold text-[#8993A7] uppercase">Code Quality</p>
-              <p className="text-[18px] font-bold text-[#20C997] mt-1">5.0 / 5</p>
+              <p className="text-[18px] font-bold text-[#20C997] mt-1">{avgCode} {hasReviews ? '/ 5' : ''}</p>
             </div>
             <div className="p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
               <p className="text-[11px] font-semibold text-[#8993A7] uppercase">Architecture</p>
-              <p className="text-[18px] font-bold text-[#7950F2] mt-1">4.8 / 5</p>
+              <p className="text-[18px] font-bold text-[#7950F2] mt-1">{avgArch} {hasReviews ? '/ 5' : ''}</p>
             </div>
             <div className="p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
               <p className="text-[11px] font-semibold text-[#8993A7] uppercase">UI / UX</p>
-              <p className="text-[18px] font-bold text-[#20C997] mt-1">5.0 / 5</p>
+              <p className="text-[18px] font-bold text-[#20C997] mt-1">{avgUi} {hasReviews ? '/ 5' : ''}</p>
             </div>
             <div className="p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
               <p className="text-[11px] font-semibold text-[#8993A7] uppercase">Communication</p>
-              <p className="text-[18px] font-bold text-[#7950F2] mt-1">4.8 / 5</p>
+              <p className="text-[18px] font-bold text-[#7950F2] mt-1">{avgComm} {hasReviews ? '/ 5' : ''}</p>
             </div>
           </div>
         </Card>
@@ -104,40 +128,48 @@ export const FeedbackPage: React.FC = () => {
         <div className="space-y-4">
           <h3 className="text-[16px] font-bold text-[#25324B]">Mentor Rubric Evaluations</h3>
 
-          {feedbackList.map((item) => (
-            <Card key={item.id} padding="md" className="space-y-3">
-              <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#EDF0F6]">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={item.mentorAvatar}
-                    alt={item.mentorName}
-                    className="w-10 h-10 rounded-full object-cover border border-[#EDF0F6]"
-                  />
-                  <div>
-                    <h4 className="text-[14px] font-bold text-[#25324B]">{item.mentorName}</h4>
-                    <p className="text-[12px] text-[#64748B]">{item.mentorRole}</p>
+          {!hasReviews ? (
+            <EmptyState
+              title="No mentor evaluations recorded yet"
+              description="Your qualitative rubric evaluations, criteria scores, and mentor feedback will appear here after your first project submission is reviewed."
+              icon={<MessageSquare className="w-6 h-6" strokeWidth={1.75} />}
+            />
+          ) : (
+            feedbackList.map((item) => (
+              <Card key={item.id} padding="md" className="space-y-3">
+                <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#EDF0F6]">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={item.mentorAvatar}
+                      alt={item.mentorName}
+                      className="w-10 h-10 rounded-full object-cover border border-[#EDF0F6]"
+                    />
+                    <div>
+                      <h4 className="text-[14px] font-bold text-[#25324B]">{item.mentorName}</h4>
+                      <p className="text-[12px] text-[#64748B]">{item.mentorRole}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[13px] font-bold text-[#20C997] bg-[#E6FCF5] px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Star className="w-3 h-3 fill-[#20C997]" />
+                      {item.overallRating}
+                    </span>
+                    <span className="text-[11px] text-[#8993A7] mt-1 block">{item.date}</span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-[13px] font-bold text-[#20C997] bg-[#E6FCF5] px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-[#20C997]" />
-                    {item.overallRating}
-                  </span>
-                  <span className="text-[11px] text-[#8993A7] mt-1 block">{item.date}</span>
-                </div>
-              </div>
 
-              {item.projectName && (
-                <div className="inline-block px-2.5 py-1 rounded-[6px] bg-[#F3F0FF] text-[#7950F2] text-[12px] font-semibold">
-                  Assignment: {item.projectName}
-                </div>
-              )}
+                {item.projectName && (
+                  <div className="inline-block px-2.5 py-1 rounded-[6px] bg-[#F3F0FF] text-[#7950F2] text-[12px] font-semibold">
+                    Assignment: {item.projectName}
+                  </div>
+                )}
 
-              <p className="text-[13px] text-[#64748B] leading-[22px] bg-[#F8FAFF] p-3.5 rounded-[8px] border border-[#EDF0F6]">
-                "{item.comments}"
-              </p>
-            </Card>
-          ))}
+                <p className="text-[13px] text-[#64748B] leading-[22px] bg-[#F8FAFF] p-3.5 rounded-[8px] border border-[#EDF0F6]">
+                  "{item.comments}"
+                </p>
+              </Card>
+            ))
+          )}
         </div>
 
         {/* Column 2: Weekly Reflection Submission Form */}
@@ -205,24 +237,32 @@ export const FeedbackPage: React.FC = () => {
           <div className="space-y-3">
             <h4 className="text-[14px] font-semibold text-[#25324B]">Past Retrospectives</h4>
 
-            {reflections.map((ref) => (
-              <Card key={ref.id} padding="md" className="space-y-2">
-                <div className="flex items-center justify-between pb-2 border-b border-[#EDF0F6]">
-                  <span className="text-[13px] font-bold text-[#7950F2]">Week {ref.weekNumber} Retrospective</span>
-                  <span className="text-[12px] text-[#8993A7] flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5" /> {ref.date}
-                  </span>
-                </div>
-                <div className="space-y-1 text-[13px]">
-                  <p className="text-[#25324B] font-semibold">Highlights:</p>
-                  <p className="text-[#64748B] text-[12px]">{ref.whatWentWell}</p>
-                </div>
-                <div className="space-y-1 text-[13px] pt-1">
-                  <p className="text-[#25324B] font-semibold">Next Goals:</p>
-                  <p className="text-[#64748B] text-[12px]">{ref.goalsForNextWeek}</p>
-                </div>
-              </Card>
-            ))}
+            {reflections.length === 0 ? (
+              <EmptyState
+                title="No retrospectives recorded yet"
+                description="Use the form above to record your first weekly retrospective on what went well, blockers, and next goals."
+                icon={<Sparkles className="w-6 h-6" strokeWidth={1.75} />}
+              />
+            ) : (
+              reflections.map((ref) => (
+                <Card key={ref.id} padding="md" className="space-y-2">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#EDF0F6]">
+                    <span className="text-[13px] font-bold text-[#7950F2]">Week {ref.weekNumber} Retrospective</span>
+                    <span className="text-[12px] text-[#8993A7] flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" /> {ref.date}
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-[13px]">
+                    <p className="text-[#25324B] font-semibold">Highlights:</p>
+                    <p className="text-[#64748B] text-[12px]">{ref.whatWentWell}</p>
+                  </div>
+                  <div className="space-y-1 text-[13px] pt-1">
+                    <p className="text-[#25324B] font-semibold">Next Goals:</p>
+                    <p className="text-[#64748B] text-[12px]">{ref.goalsForNextWeek}</p>
+                  </div>
+                </Card>
+              ))
+            )}
           </div>
         </div>
       </div>

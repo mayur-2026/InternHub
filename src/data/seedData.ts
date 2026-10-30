@@ -477,3 +477,27 @@ export const INITIAL_FAQS: FAQItem[] = [
       'Repositories must include a clean README.md with setup instructions, TypeScript without any implicit "any" errors, ESLint passing with zero errors, and a working production demo link.',
   },
 ]
+
+// Pure Catalog Data (0% completed, clean slate for authenticated real students)
+export const CATALOG_COURSE: Course = {
+  ...INITIAL_COURSE,
+  modules: INITIAL_COURSE.modules.map((m) => ({
+    ...m,
+    topics: m.topics.map((t) => ({ ...t, isCompleted: false })),
+  })),
+}
+
+export const CATALOG_PROJECTS: Project[] = INITIAL_PROJECTS.map((p) => ({
+  ...p,
+  status: 'In Progress',
+  submission: undefined,
+}))
+
+// Demo Fixtures for "Explore as Demo Student" Mode
+export const DEMO_USER = INITIAL_USER
+export const DEMO_COURSE = INITIAL_COURSE
+export const DEMO_PROJECTS = INITIAL_PROJECTS
+export const DEMO_FEEDBACK = INITIAL_FEEDBACK
+export const DEMO_REFLECTIONS = INITIAL_REFLECTIONS
+export const DEMO_TICKETS = INITIAL_TICKETS
+

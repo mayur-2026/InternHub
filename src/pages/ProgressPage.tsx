@@ -1,4 +1,5 @@
 import React from 'react'
+import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { PageHeader } from '../components/ui/FeedbackStates'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react'
 
 export const ProgressPage: React.FC = () => {
+  const { isDemo } = useAuth()
   const {
     course,
     projects,
@@ -24,14 +26,31 @@ export const ProgressPage: React.FC = () => {
     approvedProjectsCount,
   } = useApp()
 
-  const skillsList = [
-    { name: 'React 19 & Component Architecture', level: 95, category: 'Frontend' },
-    { name: 'Strict TypeScript & Polymorphism', level: 90, category: 'Language' },
-    { name: 'Tailwind CSS v4 & Design Tokens', level: 96, category: 'UI/UX' },
-    { name: 'React Router v7 & Caching Store', level: 88, category: 'Architecture' },
-    { name: 'Supabase PostgreSQL & Security RLS', level: 75, category: 'Database' },
-    { name: 'Automated CI/CD & Vercel Edge', level: 70, category: 'DevOps' },
-  ]
+  const underReviewCount = projects.filter((p) => p.status === 'Under Review').length
+
+  const modPct = (idx: number) => {
+    const mod = course.modules[idx]
+    if (!mod || mod.topics.length === 0) return 0
+    return Math.round((mod.topics.filter((t) => t.isCompleted).length / mod.topics.length) * 100)
+  }
+
+  const skillsList = isDemo
+    ? [
+        { name: 'React 19 & Component Architecture', level: 95, category: 'Frontend' },
+        { name: 'Strict TypeScript & Polymorphism', level: 90, category: 'Language' },
+        { name: 'Tailwind CSS v4 & Design Tokens', level: 96, category: 'UI/UX' },
+        { name: 'React Router v7 & Caching Store', level: 88, category: 'Architecture' },
+        { name: 'Supabase PostgreSQL & Security RLS', level: 75, category: 'Database' },
+        { name: 'Automated CI/CD & Vercel Edge', level: 70, category: 'DevOps' },
+      ]
+    : [
+        { name: 'React 19 & Component Architecture', level: Math.max(modPct(0), 10), category: 'Frontend' },
+        { name: 'Strict TypeScript & Polymorphism', level: Math.max(modPct(0), 10), category: 'Language' },
+        { name: 'Tailwind CSS v4 & Design Tokens', level: Math.max(modPct(0), 10), category: 'UI/UX' },
+        { name: 'React Router v7 & Caching Store', level: Math.max(modPct(1), 10), category: 'Architecture' },
+        { name: 'Supabase PostgreSQL & Security RLS', level: Math.max(modPct(2), 10), category: 'Database' },
+        { name: 'Automated CI/CD & Vercel Edge', level: Math.max(modPct(4), 10), category: 'DevOps' },
+      ]
 
   return (
     <div className="space-y-6">
@@ -85,9 +104,14 @@ export const ProgressPage: React.FC = () => {
           <p className="text-[28px] font-bold text-[#25324B] mt-2 tracking-tight">
             {approvedProjectsCount} / {projects.length}
           </p>
-          <p className="text-[12px] text-[#64748B] mt-0.5">1 approved, 1 under review</p>
+          <p className="text-[12px] text-[#64748B] mt-0.5">
+            {approvedProjectsCount} approved, {underReviewCount} under review
+          </p>
           <div className="mt-3">
-            <ProgressBar value={Math.round((approvedProjectsCount / projects.length) * 100)} variant="project" />
+            <ProgressBar
+              value={projects.length > 0 ? Math.round((approvedProjectsCount / projects.length) * 100) : 0}
+              variant="project"
+            />
           </div>
         </Card>
 
@@ -99,11 +123,16 @@ export const ProgressPage: React.FC = () => {
             <Flame className="w-5 h-5 text-[#FFB347]" />
           </div>
           <p className="text-[28px] font-bold text-[#25324B] mt-2 tracking-tight">
-            14 Days
+            {isDemo ? '14 Days' : completedTopicsCount === 0 ? '0 Days' : `${Math.max(1, Math.ceil(completedTopicsCount / 2))} Days`}
           </p>
-          <p className="text-[12px] text-[#64748B] mt-0.5">Top 10% cohort consistency</p>
+          <p className="text-[12px] text-[#64748B] mt-0.5">
+            {isDemo ? 'Top 10% cohort consistency' : completedTopicsCount === 0 ? 'Complete lessons to build streak' : 'Active study consistency'}
+          </p>
           <div className="mt-3">
-            <ProgressBar value={85} variant="warning" />
+            <ProgressBar
+              value={isDemo ? 85 : Math.min(100, Math.round((completedTopicsCount / (totalTopicsCount || 1)) * 100))}
+              variant="warning"
+            />
           </div>
         </Card>
       </div>

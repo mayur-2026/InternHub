@@ -119,14 +119,16 @@ export const ProfilePage: React.FC = () => {
               </div>
             </div>
 
-            <p className="text-[14px] text-[#64748B] mt-3 leading-[22px] max-w-2xl">{user.bio}</p>
+            <p className="text-[14px] text-[#64748B] mt-3 leading-[22px] max-w-2xl">
+              {user.bio || 'No bio provided yet. Update your student bio in the form below.'}
+            </p>
 
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-3 text-[12px] text-[#8993A7]">
               <span className="flex items-center gap-1.5">
-                <Building className="w-3.5 h-3.5 text-[#7950F2]" /> {user.university}
+                <Building className="w-3.5 h-3.5 text-[#7950F2]" /> {user.university || 'University not set'}
               </span>
               <span className="flex items-center gap-1.5">
-                <GraduationCap className="w-3.5 h-3.5 text-[#7950F2]" /> Class of {user.graduationYear}
+                <GraduationCap className="w-3.5 h-3.5 text-[#7950F2]" /> {user.graduationYear ? `Class of ${user.graduationYear}` : 'Graduation year not set'}
               </span>
               <span>• Joined {user.joinedDate}</span>
             </div>
