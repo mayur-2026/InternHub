@@ -18,7 +18,10 @@ import {
   INITIAL_REFLECTIONS,
   INITIAL_TICKETS,
   INITIAL_FAQS,
+  INITIAL_USER,
 } from '../data/seedData'
+import { useAuth } from './AuthContext'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 interface ToastMessage {
   id: string
@@ -47,10 +50,10 @@ interface AppContextType {
   averageRating: number
 
   // Actions & Mutations
-  toggleTopic: (topicId: string) => void
-  submitProject: (projectId: string, data: { repoUrl: string; demoUrl: string; notes: string }) => void
-  submitWeeklyReflection: (data: { whatWentWell: string; blockers: string; goalsForNextWeek: string }) => void
-  createTicket: (data: { subject: string; category: TicketCategory; priority: TicketPriority; description: string }) => void
+  toggleTopic: (topicId: string) => Promise<void>
+  submitProject: (projectId: string, data: { repoUrl: string; demoUrl: string; notes: string }) => Promise<void>
+  submitWeeklyReflection: (data: { whatWentWell: string; blockers: string; goalsForNextWeek: string }) => Promise<void>
+  createTicket: (data: { subject: string; category: TicketCategory; priority: TicketPriority; description: string }) => Promise<void>
   dismissToast: (id: string) => void
   showToast: (title: string, message: string, type?: ToastMessage['type']) => void
 }
@@ -85,6 +88,9 @@ function getFormattedDate() {
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth()
+  const activeStudentId = user?.id || INITIAL_USER.id
+
   const [internship] = useState<InternshipInfo>(INITIAL_INTERNSHIP)
 
   const [course, setCourse] = useState<Course>(() => {
@@ -140,6 +146,137 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [faqs] = useState<FAQItem[]>(INITIAL_FAQS)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
 
+  // Hydrate user records from live Supabase database on launch or user change
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) return
+
+    let isMounted = true
+
+    async function hydrateRemoteData() {
+      try {
+        // 1. Fetch support tickets from Supabase
+        const { data: remoteTickets } = await supabase
+          .from('support_tickets')
+          .select('*')
+          .eq('student_id', activeStudentId)
+          .order('created_at', { ascending: false })
+
+        if (isMounted && remoteTickets && remoteTickets.length > 0) {
+          const mapped: SupportTicket[] = remoteTickets.map((t) => ({
+            id: t.id,
+            ticketNumber: t.ticket_number,
+            subject: t.subject,
+            category: t.category as TicketCategory,
+            priority: t.priority as TicketPriority,
+            status: (t.status as SupportTicket['status']) || 'Open',
+            createdAt: new Date(t.created_at).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            }),
+            description: t.description,
+            lastReply: t.last_reply || undefined,
+          }))
+
+          setTickets((prev) => {
+            const remoteIds = new Set(mapped.map((m) => m.id))
+            const nonDuplicate = prev.filter((p) => !remoteIds.has(p.id))
+            return [...mapped, ...nonDuplicate]
+          })
+        }
+
+        // 2. Fetch weekly reflections from Supabase
+        const { data: remoteReflections } = await supabase
+          .from('weekly_reflections')
+          .select('*')
+          .eq('student_id', activeStudentId)
+          .order('created_at', { ascending: false })
+
+        if (isMounted && remoteReflections && remoteReflections.length > 0) {
+          const mapped: WeeklyReflection[] = remoteReflections.map((r) => ({
+            id: r.id,
+            weekNumber: r.week_number,
+            date: new Date(r.created_at).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            }),
+            whatWentWell: r.what_went_well,
+            blockers: r.blockers || '',
+            goalsForNextWeek: r.goals_for_next_week,
+          }))
+
+          setReflections((prev) => {
+            const remoteIds = new Set(mapped.map((m) => m.id))
+            const nonDuplicate = prev.filter((p) => !remoteIds.has(p.id))
+            return [...mapped, ...nonDuplicate]
+          })
+        }
+
+        // 3. Fetch topic completions from Supabase
+        const { data: remoteCompletions } = await supabase
+          .from('topic_completions')
+          .select('topic_id')
+          .eq('student_id', activeStudentId)
+
+        if (isMounted && remoteCompletions && remoteCompletions.length > 0) {
+          const completedSet = new Set(remoteCompletions.map((c) => c.topic_id))
+          setCourse((prevCourse) => ({
+            ...prevCourse,
+            modules: prevCourse.modules.map((mod) => ({
+              ...mod,
+              topics: mod.topics.map((t) => ({
+                ...t,
+                isCompleted: completedSet.has(t.id) ? true : t.isCompleted,
+              })),
+            })),
+          }))
+        }
+
+        // 4. Fetch project submissions from Supabase
+        const { data: remoteSubmissions } = await supabase
+          .from('project_submissions')
+          .select('*')
+          .eq('student_id', activeStudentId)
+
+        if (isMounted && remoteSubmissions && remoteSubmissions.length > 0) {
+          const subMap = new Map(remoteSubmissions.map((s) => [s.project_id, s]))
+          setProjects((prevProjects) =>
+            prevProjects.map((p) => {
+              const remoteSub = subMap.get(p.id)
+              if (remoteSub) {
+                return {
+                  ...p,
+                  status: (remoteSub.status as Project['status']) || p.status,
+                  submission: {
+                    repoUrl: remoteSub.repo_url,
+                    demoUrl: remoteSub.demo_url,
+                    notes: remoteSub.notes || '',
+                    submittedAt: new Date(remoteSub.submitted_at).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    }),
+                    grade: remoteSub.grade || undefined,
+                    mentorFeedback: remoteSub.mentor_feedback || undefined,
+                  },
+                }
+              }
+              return p
+            })
+          )
+        }
+      } catch (err) {
+        console.warn('Supabase data hydration notice:', err)
+      }
+    }
+
+    hydrateRemoteData()
+    return () => {
+      isMounted = false
+    }
+  }, [user, activeStudentId])
+
   // Sync to local storage
   useEffect(() => {
     localStorage.setItem(COURSE_STORAGE_KEY, JSON.stringify(course))
@@ -186,8 +323,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const averageRating = 4.9
 
-  // Topic Completion Toggle (Instant Optimistic Update)
-  const toggleTopic = (topicId: string) => {
+  // Topic Completion Toggle (Optimistic Update + Supabase Background Sync)
+  const toggleTopic = async (topicId: string) => {
     const targetTopic = course.modules.flatMap((m) => m.topics).find((t) => t.id === topicId)
     const willBeCompleted = targetTopic ? !targetTopic.isCompleted : false
 
@@ -207,10 +344,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (willBeCompleted) {
       showToast('Topic Completed', 'Your curriculum progress has been updated!', 'success')
     }
+
+    if (isSupabaseConfigured && user) {
+      try {
+        if (willBeCompleted) {
+          await supabase.from('topic_completions').upsert(
+            { student_id: activeStudentId, topic_id: topicId },
+            { onConflict: 'student_id,topic_id' }
+          )
+        } else {
+          await supabase
+            .from('topic_completions')
+            .delete()
+            .match({ student_id: activeStudentId, topic_id: topicId })
+        }
+      } catch (err) {
+        console.warn('Supabase topic completion sync notice:', err)
+      }
+    }
   }
 
-  // Project Submission
-  const submitProject = (
+  // Project Submission (Optimistic Update + Supabase Background Sync)
+  const submitProject = async (
     projectId: string,
     data: { repoUrl: string; demoUrl: string; notes: string }
   ) => {
@@ -235,13 +390,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     )
 
     showToast('Project Submitted', 'Your deliverables are now under mentor review.', 'success')
+
+    if (isSupabaseConfigured && user) {
+      try {
+        await supabase.from('project_submissions').upsert(
+          {
+            project_id: projectId,
+            student_id: activeStudentId,
+            repo_url: data.repoUrl,
+            demo_url: data.demoUrl,
+            notes: data.notes,
+            status: 'Under Review',
+          },
+          { onConflict: 'project_id,student_id' }
+        )
+      } catch (err) {
+        console.warn('Supabase project submission sync notice:', err)
+      }
+    }
   }
 
-  // Submit Weekly Reflection
-  const submitWeeklyReflection = (data: { whatWentWell: string; blockers: string; goalsForNextWeek: string }) => {
+  // Submit Weekly Reflection (Optimistic Update + Supabase Direct Insert)
+  const submitWeeklyReflection = async (data: { whatWentWell: string; blockers: string; goalsForNextWeek: string }) => {
+    const weekNum = reflections.length + 1
     const newRef: WeeklyReflection = {
       id: 'ref_' + generateToastId(),
-      weekNumber: reflections.length + 1,
+      weekNumber: weekNum,
       date: getFormattedDate(),
       whatWentWell: data.whatWentWell,
       blockers: data.blockers,
@@ -249,10 +423,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setReflections((prev) => [newRef, ...prev])
     showToast('Reflection Saved', 'Your weekly retrospective has been recorded.', 'success')
+
+    if (isSupabaseConfigured && user) {
+      try {
+        await supabase.from('weekly_reflections').insert({
+          student_id: activeStudentId,
+          week_number: weekNum,
+          what_went_well: data.whatWentWell,
+          blockers: data.blockers,
+          goals_for_next_week: data.goalsForNextWeek,
+        })
+      } catch (err) {
+        console.warn('Supabase reflection sync notice:', err)
+      }
+    }
   }
 
-  // Create Support Ticket
-  const createTicket = (data: { subject: string; category: TicketCategory; priority: TicketPriority; description: string }) => {
+  // Create Support Ticket (Optimistic Update + Supabase Direct Insert)
+  const createTicket = async (data: { subject: string; category: TicketCategory; priority: TicketPriority; description: string }) => {
     const nextNum = 'TKT-' + (1000 + tickets.length + 1)
     const newTicket: SupportTicket = {
       id: 'tkt_' + generateToastId(),
@@ -266,6 +454,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setTickets((prev) => [newTicket, ...prev])
     showToast('Ticket Opened', `Ticket ${nextNum} has been created and assigned to support.`, 'info')
+
+    if (isSupabaseConfigured && user) {
+      try {
+        await supabase.from('support_tickets').insert({
+          student_id: activeStudentId,
+          ticket_number: nextNum,
+          subject: data.subject,
+          category: data.category,
+          priority: data.priority,
+          status: 'Open',
+          description: data.description,
+        })
+      } catch (err) {
+        console.warn('Supabase ticket creation sync notice:', err)
+      }
+    }
   }
 
   return (

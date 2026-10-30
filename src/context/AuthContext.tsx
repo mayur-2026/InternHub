@@ -110,14 +110,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return
       }
 
-      const { error: signInError } = await supabase.auth.signInWithOAuth({
+      const { data, error: signInError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: window.location.origin,
+          skipBrowserRedirect: true,
         },
       })
 
       if (signInError) throw signInError
+
+      if (data?.url) {
+        // Pre-flight check the authorize URL to avoid landing on raw 400 JSON error if provider is not yet enabled
+        try {
+          const res = await fetch(data.url)
+          if (res.status === 400) {
+            const body = await res.json().catch(() => ({}))
+            if (body.msg && body.msg.includes('provider is not enabled')) {
+              setError(
+                'Google OAuth is not enabled in your Supabase project yet (Auth → Providers → Google). You can toggle it ON in your Supabase console, or click "Explore as Demo Student" to review all features immediately.'
+              )
+              setLoading(false)
+              return
+            }
+          }
+        } catch {
+          // If pre-flight check cannot run due to browser CORS, proceed directly
+        }
+
+        window.location.href = data.url
+        return
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Google sign-in encountered an issue. Please try again.'
       setError(message)
@@ -156,11 +179,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
-  const updateUserProfile = (updates: Partial<UserProfile>) => {
+  const updateUserProfile = async (updates: Partial<UserProfile>) => {
     if (!user) return
     const updated = { ...user, ...updates }
     setUser(updated)
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updated))
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          email: updated.email,
+          full_name: updated.fullName,
+          university: updated.university,
+          graduation_year: updated.graduationYear,
+          bio: updated.bio,
+          github_url: updated.githubUrl,
+          linkedin_url: updated.linkedinUrl,
+          role: updated.role,
+          track: updated.track,
+        })
+      } catch (err) {
+        console.warn('Supabase profile sync notice:', err)
+      }
+    }
   }
 
   const clearError = () => setError(null)

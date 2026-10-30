@@ -10,7 +10,7 @@ import type {
 } from '../types'
 
 export const INITIAL_USER: UserProfile = {
-  id: 'usr_student_01',
+  id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
   email: 'alex.rivera.dev@gmail.com',
   fullName: 'Alex Rivera',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
