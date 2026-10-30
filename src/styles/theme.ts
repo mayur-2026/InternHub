@@ -94,3 +94,4 @@ export const THEME = {
 } as const
 
 export type SemanticVariant = 'primary' | 'success' | 'warning' | 'info' | 'project' | 'error'
+

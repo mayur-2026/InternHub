@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 
 export const InternshipsPage: React.FC = () => {
-  const { internship, curriculumProgressPercentage, overallProgressPercentage } = useApp()
+  const { internship, curriculumProgressPercentage, overallProgressPercentage, showToast } = useApp()
   const { user } = useAuth()
   const [certModalOpen, setCertModalOpen] = useState(false)
 
@@ -281,7 +281,7 @@ export const InternshipsPage: React.FC = () => {
               <Button
                 size="sm"
                 icon={<ExternalLink className="w-4 h-4" />}
-                onClick={() => alert('Certificate link copied to clipboard!')}
+                onClick={() => showToast('Credential Link Copied', 'Certificate credential link has been copied to your clipboard!', 'info')}
               >
                 Share to LinkedIn
               </Button>

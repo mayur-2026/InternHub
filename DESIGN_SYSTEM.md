@@ -137,3 +137,4 @@ InternHub runs entirely on the frontend with a **reactive client-side state stor
 - **Weekly Reflections:** Interns submit weekly retrospectives, saving into the reflection ledger.
 - **Support Tickets:** Interns can raise support tickets with category and priority.
 - **Google OAuth & Demo Mode:** Supports live Google OAuth via Supabase, alongside an instant "Explore as Demo Student" one-click mode for zero-setup evaluation.
+

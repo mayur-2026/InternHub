@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 
 export const SupportPage: React.FC = () => {
-  const { tickets, faqs, createTicket } = useApp()
+  const { tickets, faqs, createTicket, showToast } = useApp()
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
   const [faqSearch, setFaqSearch] = useState('')
   const [expandedFaqId, setExpandedFaqId] = useState<string | null>(faqs[0]?.id || null)
@@ -33,6 +33,18 @@ export const SupportPage: React.FC = () => {
   const [description, setDescription] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
 
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleOpenTicketModal = () => {
+    setFormError(null)
+    setTicketModalOpen(true)
+  }
+
+  const handleCloseTicketModal = () => {
+    setFormError(null)
+    setTicketModalOpen(false)
+  }
+
   const handleCreateTicket = (e: React.FormEvent) => {
     e.preventDefault()
     if (!subject.trim() || !description.trim()) {
@@ -40,6 +52,7 @@ export const SupportPage: React.FC = () => {
       return
     }
 
+    setIsSubmitting(true)
     createTicket({
       subject: subject.trim(),
       category,
@@ -52,6 +65,7 @@ export const SupportPage: React.FC = () => {
     setCategory('Technical Issue')
     setPriority('Medium')
     setFormError(null)
+    setIsSubmitting(false)
     setTicketModalOpen(false)
   }
 
@@ -100,7 +114,7 @@ export const SupportPage: React.FC = () => {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => setTicketModalOpen(true)}
+            onClick={handleOpenTicketModal}
             icon={<PlusCircle className="w-4 h-4" />}
           >
             Open Support Ticket
@@ -127,7 +141,7 @@ export const SupportPage: React.FC = () => {
               <Button
                 size="sm"
                 className="mt-4"
-                onClick={() => setTicketModalOpen(true)}
+                onClick={handleOpenTicketModal}
                 icon={<PlusCircle className="w-4 h-4" />}
               >
                 Create a Ticket
@@ -189,7 +203,7 @@ export const SupportPage: React.FC = () => {
                 variant="outline"
                 size="sm"
                 className="w-full justify-center bg-white text-[12px]"
-                onClick={() => alert('Redirecting to Fellowship Discord workspace...')}
+                onClick={() => showToast('Discord Workspace', 'Fellowship Discord community link opening...', 'info')}
               >
                 Join Fellowship Discord
               </Button>
@@ -224,6 +238,8 @@ export const SupportPage: React.FC = () => {
                     >
                       <button
                         onClick={() => setExpandedFaqId(isExpanded ? null : faq.id)}
+                        aria-expanded={isExpanded}
+                        type="button"
                         className="w-full p-3 text-left flex items-center justify-between gap-2 hover:bg-[#F8FAFF] transition-colors cursor-pointer select-none"
                       >
                         <span className="text-[13px] font-semibold text-[#25324B] leading-[18px]">
@@ -252,14 +268,14 @@ export const SupportPage: React.FC = () => {
       {/* Raise Ticket Modal */}
       <Modal
         isOpen={ticketModalOpen}
-        onClose={() => setTicketModalOpen(false)}
+        onClose={handleCloseTicketModal}
         title="Open Support Ticket"
         description="Describe your inquiry or blocker so our engineering mentors and support team can assist you."
         maxWidth="md"
       >
         <form onSubmit={handleCreateTicket} className="space-y-4">
           {formError && (
-            <div className="p-3 bg-[#FEF2F2] border border-[#fecaca] rounded-[8px] text-[12px] text-[#DC2626] flex items-center gap-2">
+            <div className="p-3 bg-[#FEF2F2] border border-[#fecaca] rounded-[8px] text-[12px] text-[#DC2626] flex items-center gap-2" role="alert">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{formError}</span>
             </div>
@@ -270,6 +286,7 @@ export const SupportPage: React.FC = () => {
               placeholder="e.g. AWS credentials expired, Project deliverable doubt..."
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
+              disabled={isSubmitting}
             />
           </FormField>
 
@@ -278,6 +295,7 @@ export const SupportPage: React.FC = () => {
               <Select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as TicketCategory)}
+                disabled={isSubmitting}
               >
                 <option value="Technical Issue">Technical Issue</option>
                 <option value="Curriculum Doubt">Curriculum Doubt</option>
@@ -290,6 +308,7 @@ export const SupportPage: React.FC = () => {
               <Select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as TicketPriority)}
+                disabled={isSubmitting}
               >
                 <option value="Low">Low</option>
                 <option value="Medium">Medium</option>
@@ -305,6 +324,7 @@ export const SupportPage: React.FC = () => {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
+              disabled={isSubmitting}
             />
           </FormField>
 
@@ -313,11 +333,18 @@ export const SupportPage: React.FC = () => {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setTicketModalOpen(false)}
+              onClick={handleCloseTicketModal}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" size="sm" icon={<Send className="w-3.5 h-3.5" />}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              icon={<Send className="w-3.5 h-3.5" />}
+              isLoading={isSubmitting}
+            >
               Submit Ticket
             </Button>
           </div>

@@ -20,6 +20,7 @@ export const FeedbackPage: React.FC = () => {
   const [blockers, setBlockers] = useState('')
   const [goalsForNextWeek, setGoalsForNextWeek] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleReflectionSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,6 +29,7 @@ export const FeedbackPage: React.FC = () => {
       return
     }
 
+    setIsSubmitting(true)
     submitWeeklyReflection({
       whatWentWell: whatWentWell.trim(),
       blockers: blockers.trim() || 'No major blockers encountered this sprint.',
@@ -38,6 +40,7 @@ export const FeedbackPage: React.FC = () => {
     setBlockers('')
     setGoalsForNextWeek('')
     setFormError(null)
+    setIsSubmitting(false)
   }
 
   return (
@@ -184,7 +187,13 @@ export const FeedbackPage: React.FC = () => {
                 </FormField>
 
                 <div className="pt-2 flex justify-end">
-                  <Button type="submit" variant="primary" size="sm" icon={<Send className="w-3.5 h-3.5" />}>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    icon={<Send className="w-3.5 h-3.5" />}
+                    isLoading={isSubmitting}
+                  >
                     Record Reflection
                   </Button>
                 </div>

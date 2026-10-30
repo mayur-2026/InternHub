@@ -188,13 +188,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Topic Completion Toggle (Instant Optimistic Update)
   const toggleTopic = (topicId: string) => {
-    let nowCompleted = false
+    const targetTopic = course.modules.flatMap((m) => m.topics).find((t) => t.id === topicId)
+    const willBeCompleted = targetTopic ? !targetTopic.isCompleted : false
+
     setCourse((prevCourse) => {
       const nextModules = prevCourse.modules.map((mod) => {
         const nextTopics = mod.topics.map((top) => {
           if (top.id === topicId) {
-            nowCompleted = !top.isCompleted
-            return { ...top, isCompleted: nowCompleted }
+            return { ...top, isCompleted: !top.isCompleted }
           }
           return top
         })
@@ -203,7 +204,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { ...prevCourse, modules: nextModules }
     })
 
-    if (nowCompleted) {
+    if (willBeCompleted) {
       showToast('Topic Completed', 'Your curriculum progress has been updated!', 'success')
     }
   }

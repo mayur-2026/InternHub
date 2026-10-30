@@ -66,3 +66,4 @@ export const CardContent: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
     {children}
   </div>
 )
+

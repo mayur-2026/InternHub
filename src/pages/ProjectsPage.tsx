@@ -15,7 +15,9 @@ import {
   Star,
   Layers,
   Send,
+  FolderOpen,
 } from 'lucide-react'
+import { EmptyState } from '../components/ui/FeedbackStates'
 
 const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg className={className} fill="currentColor" viewBox="0 0 24 24">
@@ -34,6 +36,7 @@ export const ProjectsPage: React.FC = () => {
   const [demoUrl, setDemoUrl] = useState('')
   const [notes, setNotes] = useState('')
   const [formErrors, setFormErrors] = useState<{ repo?: string; demo?: string }>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const filteredProjects = projects.filter((p) => {
     if (filter === 'all') return true
@@ -65,11 +68,13 @@ export const ProjectsPage: React.FC = () => {
     }
 
     if (activeProjectToSubmit) {
+      setIsSubmitting(true)
       submitProject(activeProjectToSubmit.id, {
         repoUrl: repoUrl.trim(),
         demoUrl: demoUrl.trim(),
         notes: notes.trim(),
       })
+      setIsSubmitting(false)
       setActiveProjectToSubmit(null)
     }
   }
@@ -122,9 +127,18 @@ export const ProjectsPage: React.FC = () => {
       </div>
 
       {/* Projects Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredProjects.map((project) => (
-          <Card key={project.id} padding="md" className="flex flex-col justify-between">
+      {filteredProjects.length === 0 ? (
+        <EmptyState
+          title="No projects in this category"
+          description="There are currently no assigned projects matching this filter criteria."
+          icon={<FolderOpen className="w-6 h-6" strokeWidth={1.75} />}
+          actionLabel="View All Projects"
+          onAction={() => setFilter('all')}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredProjects.map((project) => (
+            <Card key={project.id} padding="md" className="flex flex-col justify-between">
             <div>
               {/* Header */}
               <div className="flex items-start justify-between gap-2 mb-3">
@@ -222,6 +236,7 @@ export const ProjectsPage: React.FC = () => {
           </Card>
         ))}
       </div>
+      )}
 
       {/* Interactive Submission Form Modal */}
       {activeProjectToSubmit && (
@@ -288,10 +303,17 @@ export const ProjectsPage: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => setActiveProjectToSubmit(null)}
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" size="sm" icon={<Send className="w-3.5 h-3.5" />}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                icon={<Send className="w-3.5 h-3.5" />}
+                isLoading={isSubmitting}
+              >
                 Confirm Submission
               </Button>
             </div>

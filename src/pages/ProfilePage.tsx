@@ -41,9 +41,28 @@ export const ProfilePage: React.FC = () => {
   const [githubUrl, setGithubUrl] = useState(user?.githubUrl || '')
   const [linkedinUrl, setLinkedinUrl] = useState(user?.linkedinUrl || '')
   const [isSaved, setIsSaved] = useState(false)
+  const [errors, setErrors] = useState<{ fullName?: string; university?: string; graduationYear?: string }>({})
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault()
+    const newErrors: { fullName?: string; university?: string; graduationYear?: string } = {}
+
+    if (!fullName.trim()) {
+      newErrors.fullName = 'Full Name is required'
+    }
+    if (!university.trim()) {
+      newErrors.university = 'University or College name is required'
+    }
+    if (!graduationYear.trim()) {
+      newErrors.graduationYear = 'Graduation Year is required'
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors)
+      return
+    }
+
+    setErrors({})
     updateUserProfile({
       fullName: fullName.trim(),
       bio: bio.trim(),
@@ -129,11 +148,12 @@ export const ProfilePage: React.FC = () => {
             <CardContent>
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormField label="Full Name" required>
+                  <FormField label="Full Name" required error={errors.fullName}>
                     <Input
                       icon={<User className="w-4 h-4" />}
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
+                      hasError={Boolean(errors.fullName)}
                     />
                   </FormField>
 
@@ -156,19 +176,21 @@ export const ProfilePage: React.FC = () => {
                 </FormField>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormField label="University / College" required>
+                  <FormField label="University / College" required error={errors.university}>
                     <Input
                       icon={<Building className="w-4 h-4" />}
                       value={university}
                       onChange={(e) => setUniversity(e.target.value)}
+                      hasError={Boolean(errors.university)}
                     />
                   </FormField>
 
-                  <FormField label="Expected Graduation Year" required>
+                  <FormField label="Expected Graduation Year" required error={errors.graduationYear}>
                     <Input
                       icon={<GraduationCap className="w-4 h-4" />}
                       value={graduationYear}
                       onChange={(e) => setGraduationYear(e.target.value)}
+                      hasError={Boolean(errors.graduationYear)}
                     />
                   </FormField>
                 </div>

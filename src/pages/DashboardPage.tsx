@@ -35,12 +35,19 @@ export const DashboardPage: React.FC = () => {
     toggleTopic,
   } = useApp()
 
-  // Find active module (Module 3 in our seed)
-  const currentModule = course.modules[2] || course.modules[0]
+  // Find active module (Module 3 in our seed) with safe fallback
+  const currentModule = course.modules[2] || course.modules[0] || {
+    id: 'default',
+    title: 'Curriculum Overview',
+    description: '',
+    weekNumber: 1,
+    topics: [],
+  }
+  const currentModuleTotal = currentModule.topics.length
   const currentModuleCompletedCount = currentModule.topics.filter((t) => t.isCompleted).length
-  const currentModulePercent = Math.round(
-    (currentModuleCompletedCount / currentModule.topics.length) * 100
-  )
+  const currentModulePercent = currentModuleTotal > 0
+    ? Math.round((currentModuleCompletedCount / currentModuleTotal) * 100)
+    : 0
 
   return (
     <div className="space-y-6">
@@ -209,19 +216,27 @@ export const DashboardPage: React.FC = () => {
                   <div
                     key={topic.id}
                     onClick={() => toggleTopic(topic.id)}
-                    className="flex items-start gap-3 p-2.5 rounded-[8px] hover:bg-[#F5F7FC] transition-colors cursor-pointer group select-none border border-transparent hover:border-[#EDF0F6]"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        toggleTopic(topic.id)
+                      }
+                    }}
+                    role="checkbox"
+                    aria-checked={topic.isCompleted}
+                    tabIndex={0}
+                    className="flex items-start gap-3 p-2.5 rounded-[8px] hover:bg-[#F5F7FC] transition-colors cursor-pointer group select-none border border-transparent hover:border-[#EDF0F6] focus-ring"
                   >
-                    <button
-                      type="button"
+                    <div
                       className={`w-5 h-5 rounded-[6px] border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
                         topic.isCompleted
                           ? 'bg-[#20C997] border-[#20C997] text-white'
                           : 'border-[#EDF0F6] bg-white group-hover:border-[#7950F2]'
                       }`}
-                      aria-label={topic.isCompleted ? 'Mark as incomplete' : 'Mark as complete'}
+                      aria-hidden="true"
                     >
                       {topic.isCompleted && <CheckCircle2 className="w-3.5 h-3.5" />}
-                    </button>
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p
                         className={`text-[13px] leading-[18px] font-medium ${
@@ -340,3 +355,4 @@ export const DashboardPage: React.FC = () => {
     </div>
   )
 }
+
