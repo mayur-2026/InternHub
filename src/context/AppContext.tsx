@@ -91,31 +91,29 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [internship] = useState<InternshipInfo>(INITIAL_INTERNSHIP)
 
   const [course, setCourse] = useState<Course>(() => {
-    if (isDemo) return DEMO_COURSE
-    const key = `internhub_course_${activeStudentId}`
-    const saved = localStorage.getItem(key)
+    const key = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
     if (saved) {
       try {
         return JSON.parse(saved)
       } catch {
-        return CATALOG_COURSE
+        return isDemo ? DEMO_COURSE : CATALOG_COURSE
       }
     }
-    return CATALOG_COURSE
+    return isDemo ? DEMO_COURSE : CATALOG_COURSE
   })
 
   const [projects, setProjects] = useState<Project[]>(() => {
-    if (isDemo) return DEMO_PROJECTS
-    const key = `internhub_projects_${activeStudentId}`
-    const saved = localStorage.getItem(key)
+    const key = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
     if (saved) {
       try {
         return JSON.parse(saved)
       } catch {
-        return CATALOG_PROJECTS
+        return isDemo ? DEMO_PROJECTS : CATALOG_PROJECTS
       }
     }
-    return CATALOG_PROJECTS
+    return isDemo ? DEMO_PROJECTS : CATALOG_PROJECTS
   })
 
   const [feedbackList, setFeedbackList] = useState<FeedbackEvaluation[]>(() => {
@@ -217,18 +215,18 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .select('topic_id')
           .eq('student_id', user.id)
 
-        if (isMounted) {
-          const completedSet = new Set((remoteCompletions || []).map((c) => c.topic_id))
-          setCourse({
-            ...CATALOG_COURSE,
-            modules: CATALOG_COURSE.modules.map((mod) => ({
+        if (isMounted && remoteCompletions && remoteCompletions.length > 0) {
+          const completedSet = new Set(remoteCompletions.map((c) => c.topic_id))
+          setCourse((prevCourse) => ({
+            ...prevCourse,
+            modules: prevCourse.modules.map((mod) => ({
               ...mod,
               topics: mod.topics.map((t) => ({
                 ...t,
-                isCompleted: completedSet.has(t.id),
+                isCompleted: t.isCompleted || completedSet.has(t.id),
               })),
             })),
-          })
+          }))
         }
 
         // 4. Fetch project submissions from Supabase for this authenticated user
@@ -237,31 +235,32 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .select('*')
           .eq('student_id', user.id)
 
-        if (isMounted && remoteSubmissions) {
+        if (isMounted && remoteSubmissions && remoteSubmissions.length > 0) {
           const subMap = new Map(remoteSubmissions.map((s) => [s.project_id, s]))
-          const updatedProjects = CATALOG_PROJECTS.map((p) => {
-            const remoteSub = subMap.get(p.id)
-            if (remoteSub) {
-              return {
-                ...p,
-                status: (remoteSub.status as Project['status']) || 'Under Review',
-                submission: {
-                  repoUrl: remoteSub.repo_url,
-                  demoUrl: remoteSub.demo_url,
-                  notes: remoteSub.notes || '',
-                  submittedAt: new Date(remoteSub.submitted_at).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  }),
-                  grade: remoteSub.grade || undefined,
-                  mentorFeedback: remoteSub.mentor_feedback || undefined,
-                },
+          setProjects((prevProjects) =>
+            prevProjects.map((p) => {
+              const remoteSub = subMap.get(p.id)
+              if (remoteSub) {
+                return {
+                  ...p,
+                  status: (remoteSub.status as Project['status']) || 'Under Review',
+                  submission: {
+                    repoUrl: remoteSub.repo_url,
+                    demoUrl: remoteSub.demo_url,
+                    notes: remoteSub.notes || '',
+                    submittedAt: new Date(remoteSub.submitted_at).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    }),
+                    grade: remoteSub.grade || undefined,
+                    mentorFeedback: remoteSub.mentor_feedback || undefined,
+                  },
+                }
               }
-            }
-            return p
-          })
-          setProjects(updatedProjects)
+              return p
+            })
+          )
 
           // Derive genuine mentor feedback from graded submissions
           const subsWithFeedback = remoteSubmissions.filter((s) => s.mentor_feedback || s.grade)
@@ -378,18 +377,24 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isSupabaseConfigured && user && !isDemo) {
       try {
         if (willBeCompleted) {
-          await supabase.from('topic_completions').upsert(
+          const { error: syncError } = await supabase.from('topic_completions').upsert(
             { student_id: activeStudentId, topic_id: topicId },
             { onConflict: 'student_id,topic_id' }
           )
+          if (syncError) {
+            console.error('Supabase topic completion sync error:', syncError)
+          }
         } else {
-          await supabase
+          const { error: syncError } = await supabase
             .from('topic_completions')
             .delete()
             .match({ student_id: activeStudentId, topic_id: topicId })
+          if (syncError) {
+            console.error('Supabase topic completion delete error:', syncError)
+          }
         }
       } catch (err) {
-        console.warn('Supabase topic completion sync notice:', err)
+        console.error('Supabase topic completion sync notice:', err)
       }
     }
   }
@@ -423,7 +428,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (isSupabaseConfigured && user && !isDemo) {
       try {
-        await supabase.from('project_submissions').upsert(
+        const { error: syncError } = await supabase.from('project_submissions').upsert(
           {
             project_id: projectId,
             student_id: activeStudentId,
@@ -432,10 +437,13 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             notes: data.notes,
             status: 'Under Review',
           },
-          { onConflict: 'project_id,student_id' }
+          { onConflict: 'student_id,project_id' }
         )
+        if (syncError) {
+          console.error('Supabase project submission sync error:', syncError)
+        }
       } catch (err) {
-        console.warn('Supabase project submission sync notice:', err)
+        console.error('Supabase project submission sync notice:', err)
       }
     }
   }
