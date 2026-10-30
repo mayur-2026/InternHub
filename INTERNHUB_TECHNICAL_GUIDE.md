@@ -210,3 +210,4 @@ When presenting to clients, follow this simple 4-step script:
 
 > **[1:30 - 2:00] Hands-On Delivery & Support:**  
 > *"In the Projects section, students submit real GitHub and demo URLs with full validation. In the Support desk, students can report blockers with an accessible ticket form. The entire system is responsive, accessible, and ready for deployment."*
+

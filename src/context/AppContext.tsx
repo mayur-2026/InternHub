@@ -9,6 +9,7 @@ import type {
   FAQItem,
   TicketCategory,
   TicketPriority,
+  AppNotification,
 } from '../types'
 import {
   INITIAL_INTERNSHIP,
@@ -41,6 +42,8 @@ interface AppContextType {
   tickets: SupportTicket[]
   faqs: FAQItem[]
   toasts: ToastMessage[]
+  notifications: AppNotification[]
+  unreadNotificationsCount: number
   
   // Analytics & Computed Properties
   totalTopicsCount: number
@@ -58,6 +61,9 @@ interface AppContextType {
   createTicket: (data: { subject: string; category: TicketCategory; priority: TicketPriority; description: string }) => Promise<void>
   dismissToast: (id: string) => void
   showToast: (title: string, message: string, type?: ToastMessage['type']) => void
+  markNotificationAsRead: (id: string) => void
+  markAllNotificationsAsRead: () => void
+  clearNotifications: () => void
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
@@ -151,6 +157,37 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [faqs] = useState<FAQItem[]>(INITIAL_FAQS)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
+    const key = `internhub_notifications_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch {
+        // use default
+      }
+    }
+    return [
+      {
+        id: 'notif_welcome',
+        title: 'Welcome to InternHub',
+        message: 'Your internship workspace is active. Explore your curriculum and project milestones.',
+        type: 'system',
+        timestamp: 'Today',
+        isRead: false,
+        link: '/dashboard',
+      },
+      {
+        id: 'notif_milestone',
+        title: 'Upcoming Milestone Sprint',
+        message: 'Review deliverables for InternHub Dashboard and setup your repository.',
+        type: 'project',
+        timestamp: 'Yesterday',
+        isRead: false,
+        link: '/projects',
+      },
+    ]
+  })
 
   // Hydrate records from live Supabase database for authenticated real user
   useEffect(() => {
@@ -321,6 +358,25 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(key, JSON.stringify(tickets))
   }, [tickets, activeStudentId, isDemo])
 
+  useEffect(() => {
+    const key = isDemo ? 'internhub_demo_notifications_data' : `internhub_notifications_${activeStudentId}`
+    localStorage.setItem(key, JSON.stringify(notifications))
+  }, [notifications, activeStudentId, isDemo])
+
+  const unreadNotificationsCount = notifications.filter((n) => !n.isRead).length
+
+  const markNotificationAsRead = (id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+  }
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+  }
+
+  const clearNotifications = () => {
+    setNotifications([])
+  }
+
   const showToast = (title: string, message: string, type: ToastMessage['type'] = 'success') => {
     const id = generateToastId()
     setToasts((prev) => [...prev, { id, title, message, type }])
@@ -398,6 +454,21 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else if (willBeCompleted) {
       showToast('Topic Completed', 'Your curriculum progress has been updated!', 'success')
     }
+
+    if (willBeCompleted && targetTopic) {
+      setNotifications((prev) => [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Topic Completed',
+          message: `Completed "${targetTopic.title}". Curriculum progress updated!`,
+          type: 'curriculum',
+          timestamp: 'Just now',
+          isRead: false,
+          link: '/learning',
+        },
+        ...prev,
+      ])
+    }
   }
 
   // Project Submission (Optimistic Update + Supabase Background Sync)
@@ -450,6 +521,20 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       showToast('Project Submitted', 'Your deliverables are now under mentor review.', 'success')
     }
+
+    const targetProject = projects.find((p) => p.id === projectId)
+    setNotifications((prev) => [
+      {
+        id: `notif_${Date.now()}`,
+        title: 'Deliverables Submitted',
+        message: `Submitted deliverables for "${targetProject?.title || 'Project'}". Status: Under Review.`,
+        type: 'project',
+        timestamp: 'Just now',
+        isRead: false,
+        link: '/projects',
+      },
+      ...prev,
+    ])
   }
 
   // Submit Weekly Reflection (Optimistic Update + Supabase Direct Insert)
@@ -465,6 +550,19 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setReflections((prev) => [newRef, ...prev])
     showToast('Reflection Saved', 'Your weekly retrospective has been recorded.', 'success')
+
+    setNotifications((prev) => [
+      {
+        id: `notif_${Date.now()}`,
+        title: 'Weekly Retrospective Recorded',
+        message: `Week ${weekNum} self-reflection has been saved.`,
+        type: 'feedback',
+        timestamp: 'Just now',
+        isRead: false,
+        link: '/feedback',
+      },
+      ...prev,
+    ])
 
     if (isSupabaseConfigured && user && !isDemo) {
       try {
@@ -497,6 +595,19 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTickets((prev) => [newTicket, ...prev])
     showToast('Ticket Opened', `Ticket ${nextNum} has been created and assigned to support.`, 'info')
 
+    setNotifications((prev) => [
+      {
+        id: `notif_${Date.now()}`,
+        title: 'Support Ticket Logged',
+        message: `Ticket #${nextNum} (${data.category}) created and assigned.`,
+        type: 'support',
+        timestamp: 'Just now',
+        isRead: false,
+        link: '/support',
+      },
+      ...prev,
+    ])
+
     if (isSupabaseConfigured && user && !isDemo) {
       try {
         await supabase.from('support_tickets').insert({
@@ -525,6 +636,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tickets,
         faqs,
         toasts,
+        notifications,
+        unreadNotificationsCount,
         totalTopicsCount,
         completedTopicsCount,
         curriculumProgressPercentage,
@@ -538,6 +651,9 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createTicket,
         dismissToast,
         showToast,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        clearNotifications,
       }}
     >
       {children}
