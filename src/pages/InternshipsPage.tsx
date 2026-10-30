@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 
 export const InternshipsPage: React.FC = () => {
-  const { internship, curriculumProgressPercentage, overallProgressPercentage, showToast } = useApp()
+  const { internship, course, curriculumProgressPercentage, overallProgressPercentage, showToast } = useApp()
   const { user } = useAuth()
   const [certModalOpen, setCertModalOpen] = useState(false)
 
@@ -170,53 +170,61 @@ export const InternshipsPage: React.FC = () => {
             <ProgressBar value={curriculumProgressPercentage} variant="primary" />
 
             <div className="space-y-3 pt-2">
-              <div className="flex items-start gap-3 p-3 rounded-[8px] bg-[#E6FCF5] border border-[#bbf7d0]/40">
-                <CheckCircle2 className="w-5 h-5 text-[#20C997] shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[14px] font-semibold text-[#25324B]">Sprint 1: Architecture & Setup</p>
-                    <StatusBadge variant="success">Completed</StatusBadge>
-                  </div>
-                  <p className="text-[12px] text-[#64748B] mt-0.5">Vite setup, strict TypeScript rules, and component scaffolding.</p>
-                </div>
-              </div>
+              {course.modules.map((mod) => {
+                const modTotal = mod.topics.length
+                const modDone = mod.topics.filter((t) => t.isCompleted).length
+                const isComplete = modTotal > 0 && modDone === modTotal
+                const activeWeekNum = course.modules.find((m) => m.topics.some((t) => !t.isCompleted))?.weekNumber || 1
+                const isActive = !isComplete && mod.weekNumber === activeWeekNum
 
-              <div className="flex items-start gap-3 p-3 rounded-[8px] bg-[#E6FCF5] border border-[#bbf7d0]/40">
-                <CheckCircle2 className="w-5 h-5 text-[#20C997] shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[14px] font-semibold text-[#25324B]">Sprint 2: Routing & State Store</p>
-                    <StatusBadge variant="success">Completed</StatusBadge>
+                return (
+                  <div
+                    key={mod.id}
+                    className={`flex items-start gap-3 p-3 rounded-[8px] border transition-colors ${
+                      isComplete
+                        ? 'bg-[#E6FCF5] border-[#bbf7d0]/40'
+                        : isActive
+                        ? 'bg-[#F3F0FF] border-[#7950F2]/20'
+                        : 'bg-[#F5F7FC] border-[#EDF0F6]'
+                    }`}
+                  >
+                    {isComplete ? (
+                      <CheckCircle2 className="w-5 h-5 text-[#20C997] shrink-0 mt-0.5" />
+                    ) : (
+                      <div
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold ${
+                          isActive
+                            ? 'border-[#7950F2] text-[#7950F2]'
+                            : 'border-[#8993A7] text-[#8993A7]'
+                        }`}
+                      >
+                        {mod.weekNumber}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between">
+                        <p
+                          className={`text-[14px] font-semibold ${
+                            isActive ? 'text-[#25324B]' : isComplete ? 'text-[#25324B]' : 'text-[#64748B]'
+                          }`}
+                        >
+                          Phase {mod.weekNumber}: {mod.title}
+                        </p>
+                        {isComplete ? (
+                          <StatusBadge variant="success">Completed</StatusBadge>
+                        ) : isActive ? (
+                          <StatusBadge variant="primary">Current Active</StatusBadge>
+                        ) : (
+                          <span className="text-[11px] text-[#8993A7]">Upcoming</span>
+                        )}
+                      </div>
+                      <p className="text-[12px] text-[#64748B] mt-0.5">
+                        {mod.description} • {modDone}/{modTotal} Topics Completed
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-[12px] text-[#64748B] mt-0.5">React Router v7 layouts, TanStack Query cache, and auth persistence.</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-3 rounded-[8px] bg-[#F3F0FF] border border-[#7950F2]/20">
-                <div className="w-5 h-5 rounded-full border-2 border-[#7950F2] flex items-center justify-center shrink-0 mt-0.5 text-[#7950F2] text-[10px] font-bold">
-                  3
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[14px] font-semibold text-[#25324B]">Sprint 3: Database & Cloud Backends</p>
-                    <StatusBadge variant="primary">Current Active</StatusBadge>
-                  </div>
-                  <p className="text-[12px] text-[#64748B] mt-0.5">Supabase PostgreSQL modeling, Row-Level Security, and Google OAuth flow.</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-3 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
-                <div className="w-5 h-5 rounded-full border-2 border-[#8993A7] flex items-center justify-center shrink-0 mt-0.5 text-[#8993A7] text-[10px] font-bold">
-                  4
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[14px] font-medium text-[#64748B]">Sprint 4: Final Project & Production Delivery</p>
-                    <span className="text-[11px] text-[#8993A7]">Upcoming</span>
-                  </div>
-                  <p className="text-[12px] text-[#8993A7] mt-0.5">Automated GitHub Actions CI/CD and edge Vercel deployment.</p>
-                </div>
-              </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>

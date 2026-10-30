@@ -45,7 +45,7 @@ export const SupportPage: React.FC = () => {
     setTicketModalOpen(false)
   }
 
-  const handleCreateTicket = (e: React.FormEvent) => {
+  const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!subject.trim() || !description.trim()) {
       setFormError('Please enter a ticket subject and a detailed description.')
@@ -53,20 +53,23 @@ export const SupportPage: React.FC = () => {
     }
 
     setIsSubmitting(true)
-    createTicket({
-      subject: subject.trim(),
-      category,
-      priority,
-      description: description.trim(),
-    })
+    try {
+      await createTicket({
+        subject: subject.trim(),
+        category,
+        priority,
+        description: description.trim(),
+      })
 
-    setSubject('')
-    setDescription('')
-    setCategory('Technical Issue')
-    setPriority('Medium')
-    setFormError(null)
-    setIsSubmitting(false)
-    setTicketModalOpen(false)
+      setSubject('')
+      setDescription('')
+      setCategory('Technical Issue')
+      setPriority('Medium')
+      setFormError(null)
+      setTicketModalOpen(false)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const filteredFaqs = faqs.filter(

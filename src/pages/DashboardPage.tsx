@@ -189,7 +189,11 @@ export const DashboardPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-wider text-[#8993A7]">Curriculum Milestone</p>
-                <h4 className="text-[15px] font-semibold text-[#25324B] mt-0.5">Module 3 of 5 in Progress</h4>
+                <h4 className="text-[15px] font-semibold text-[#25324B] mt-0.5">
+                  {curriculumProgressPercentage === 100
+                    ? 'All Modules Completed! 🎉'
+                    : `Module ${currentModule.weekNumber} of ${course.modules.length} in Progress`}
+                </h4>
               </div>
               <span className="text-[14px] font-bold text-[#7950F2]">{curriculumProgressPercentage}%</span>
             </div>

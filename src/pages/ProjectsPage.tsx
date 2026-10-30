@@ -51,7 +51,7 @@ export const ProjectsPage: React.FC = () => {
     setFormErrors({})
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const errors: { repo?: string; demo?: string } = {}
 
@@ -69,13 +69,16 @@ export const ProjectsPage: React.FC = () => {
 
     if (activeProjectToSubmit) {
       setIsSubmitting(true)
-      submitProject(activeProjectToSubmit.id, {
-        repoUrl: repoUrl.trim(),
-        demoUrl: demoUrl.trim(),
-        notes: notes.trim(),
-      })
-      setIsSubmitting(false)
-      setActiveProjectToSubmit(null)
+      try {
+        await submitProject(activeProjectToSubmit.id, {
+          repoUrl: repoUrl.trim(),
+          demoUrl: demoUrl.trim(),
+          notes: notes.trim(),
+        })
+      } finally {
+        setIsSubmitting(false)
+        setActiveProjectToSubmit(null)
+      }
     }
   }
 

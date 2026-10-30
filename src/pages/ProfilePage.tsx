@@ -43,7 +43,9 @@ export const ProfilePage: React.FC = () => {
   const [isSaved, setIsSaved] = useState(false)
   const [errors, setErrors] = useState<{ fullName?: string; university?: string; graduationYear?: string }>({})
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     const newErrors: { fullName?: string; university?: string; graduationYear?: string } = {}
 
@@ -63,18 +65,23 @@ export const ProfilePage: React.FC = () => {
     }
 
     setErrors({})
-    updateUserProfile({
-      fullName: fullName.trim(),
-      bio: bio.trim(),
-      university: university.trim(),
-      graduationYear: graduationYear.trim(),
-      githubUrl: githubUrl.trim(),
-      linkedinUrl: linkedinUrl.trim(),
-    })
+    setIsSubmitting(true)
+    try {
+      await updateUserProfile({
+        fullName: fullName.trim(),
+        bio: bio.trim(),
+        university: university.trim(),
+        graduationYear: graduationYear.trim(),
+        githubUrl: githubUrl.trim(),
+        linkedinUrl: linkedinUrl.trim(),
+      })
 
-    setIsSaved(true)
-    showToast('Profile Saved', 'Your student profile information has been successfully updated.', 'success')
-    setTimeout(() => setIsSaved(false), 3000)
+      setIsSaved(true)
+      showToast('Profile Saved', 'Your student profile information has been successfully updated.', 'success')
+      setTimeout(() => setIsSaved(false), 3000)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   if (!user) return null
@@ -227,7 +234,14 @@ export const ProfilePage: React.FC = () => {
                       Updates immediately reflect in your navigation header.
                     </span>
                   )}
-                  <Button type="submit" variant="primary" size="sm" icon={<Save className="w-4 h-4" />}>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    icon={<Save className="w-4 h-4" />}
+                    isLoading={isSubmitting}
+                    disabled={isSubmitting}
+                  >
                     Save Changes
                   </Button>
                 </div>

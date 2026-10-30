@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { MobileDrawer } from './MobileDrawer'
 import { ToastContainer } from '../ui/ToastContainer'
+import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { useAuth } from '../../context/AuthContext'
 import { Sparkles, ArrowRight } from 'lucide-react'
 
@@ -47,7 +48,9 @@ export const AppLayout: React.FC = () => {
         <Header onOpenMobileNav={() => setMobileNavOpen(true)} />
 
         <main className="flex-1 p-4 sm:p-5 lg:p-6 max-w-7xl w-full mx-auto">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 

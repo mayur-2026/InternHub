@@ -209,7 +209,9 @@ describe('End-to-End Application Audit: Pages, Workflows & Interactivity', () =>
     const saveBtn = screen.getByRole('button', { name: /save changes/i })
     await user.click(saveBtn)
 
-    expect(screen.getByText(/changes saved successfully/i)).toBeDefined()
+    await waitFor(() => {
+      expect(screen.getByText(/changes saved successfully/i)).toBeDefined()
+    })
   })
 
   it('Header Search Bar: Indexes sections, projects, and topics with interactive autocomplete and keyboard navigation', async () => {

@@ -23,7 +23,7 @@ export const FeedbackPage: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleReflectionSubmit = (e: React.FormEvent) => {
+  const handleReflectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!whatWentWell.trim() || !goalsForNextWeek.trim()) {
       setFormError('Please fill in what went well and your primary goals for next sprint.')
@@ -31,17 +31,20 @@ export const FeedbackPage: React.FC = () => {
     }
 
     setIsSubmitting(true)
-    submitWeeklyReflection({
-      whatWentWell: whatWentWell.trim(),
-      blockers: blockers.trim() || 'No major blockers encountered this sprint.',
-      goalsForNextWeek: goalsForNextWeek.trim(),
-    })
+    try {
+      await submitWeeklyReflection({
+        whatWentWell: whatWentWell.trim(),
+        blockers: blockers.trim() || 'No major blockers encountered this sprint.',
+        goalsForNextWeek: goalsForNextWeek.trim(),
+      })
 
-    setWhatWentWell('')
-    setBlockers('')
-    setGoalsForNextWeek('')
-    setFormError(null)
-    setIsSubmitting(false)
+      setWhatWentWell('')
+      setBlockers('')
+      setGoalsForNextWeek('')
+      setFormError(null)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const hasReviews = feedbackList.length > 0
