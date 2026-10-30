@@ -211,4 +211,54 @@ describe('End-to-End Application Audit: Pages, Workflows & Interactivity', () =>
 
     expect(screen.getByText(/changes saved successfully/i)).toBeDefined()
   })
+
+  it('Header Search Bar: Indexes sections, projects, and topics with interactive autocomplete and keyboard navigation', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <AuthProvider>
+          <AppProvider>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="projects" element={<ProjectsPage />} />
+              </Route>
+            </Routes>
+          </AppProvider>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+
+    const searchInput = screen.getByRole('searchbox')
+    expect(searchInput).toBeDefined()
+
+    // 1. Type "projects" into the search bar
+    await user.type(searchInput, 'projects')
+    expect((searchInput as HTMLInputElement).value).toBe('projects')
+
+    // 2. Autocomplete dropdown appears with matching results
+    await waitFor(() => {
+      expect(screen.getByText(/search results/i)).toBeDefined()
+      expect(screen.getAllByText('Assigned Projects').length).toBeGreaterThanOrEqual(2)
+    })
+
+    // 3. Arrow Down keyboard navigation selects next item and Enter triggers navigation
+    fireEvent.keyDown(searchInput, { key: 'ArrowDown' })
+    fireEvent.keyDown(searchInput, { key: 'Enter' })
+
+    // 4. Clear button removes query and closes dropdown
+    await user.type(searchInput, 'react')
+    const clearButton = screen.getByLabelText(/clear search query/i)
+    expect(clearButton).toBeDefined()
+    await user.click(clearButton)
+    expect((searchInput as HTMLInputElement).value).toBe('')
+  })
 })

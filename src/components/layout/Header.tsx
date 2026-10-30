@@ -1,6 +1,22 @@
-import React from 'react'
-import { Link } from 'react-router-dom'
-import { Menu, Search, Bell, Sparkles } from 'lucide-react'
+import React, { useState, useRef, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import {
+  Menu,
+  Search,
+  Bell,
+  Sparkles,
+  X,
+  LayoutDashboard,
+  Briefcase,
+  GraduationCap,
+  FolderGit2,
+  TrendingUp,
+  MessageSquare,
+  HelpCircle,
+  User,
+  ArrowRight,
+  BookOpen,
+} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useApp } from '../../context/AppContext'
 
@@ -8,14 +24,199 @@ export interface HeaderProps {
   onOpenMobileNav: () => void
 }
 
+interface SearchItem {
+  id: string
+  title: string
+  subtitle: string
+  category: 'Sections' | 'Projects' | 'Topics'
+  keywords?: string[]
+  to: string
+  icon: React.ReactNode
+}
+
 export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
   const { user } = useAuth()
-  const { internship } = useApp()
+  const { internship, course, projects } = useApp()
+  const navigate = useNavigate()
+
+  const [query, setQuery] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Build searchable index from sections, projects, and curriculum topics
+  const allSearchItems: SearchItem[] = [
+    // 8 Core Navigation Sections
+    {
+      id: 'nav-dashboard',
+      title: 'Dashboard',
+      subtitle: 'Overview, KPI stats & recent milestones',
+      category: 'Sections',
+      keywords: ['overview', 'stats', 'kpi', 'metrics', 'home', 'summary'],
+      to: '/dashboard',
+      icon: <LayoutDashboard className="w-4 h-4 text-[#7950F2]" />,
+    },
+    {
+      id: 'nav-internships',
+      title: 'My Internships',
+      subtitle: `${internship.company} • ${internship.role}`,
+      category: 'Sections',
+      keywords: ['role', 'company', 'organization', 'dates', 'supervisor', 'fellowship', 'work'],
+      to: '/internships',
+      icon: <Briefcase className="w-4 h-4 text-[#7950F2]" />,
+    },
+    {
+      id: 'nav-learning',
+      title: 'Learning Curriculum',
+      subtitle: 'Technical modules, courses & lessons',
+      category: 'Sections',
+      keywords: ['course', 'modules', 'lessons', 'curriculum', 'study', 'education', 'topics'],
+      to: '/learning',
+      icon: <GraduationCap className="w-4 h-4 text-[#7950F2]" />,
+    },
+    {
+      id: 'nav-projects',
+      title: 'Assigned Projects',
+      subtitle: 'Engineering deliverables & submission portal',
+      category: 'Sections',
+      keywords: ['deliverables', 'sprint', 'code', 'github', 'repository', 'tasks', 'submissions'],
+      to: '/projects',
+      icon: <FolderGit2 className="w-4 h-4 text-[#F06595]" />,
+    },
+    {
+      id: 'nav-progress',
+      title: 'Progress & Analytics',
+      subtitle: 'Overall fellowship completion & competencies',
+      category: 'Sections',
+      keywords: ['analytics', 'charts', 'completion', 'grades', 'attendance', 'metrics'],
+      to: '/progress',
+      icon: <TrendingUp className="w-4 h-4 text-[#FFB347]" />,
+    },
+    {
+      id: 'nav-feedback',
+      title: 'Mentor Feedback & Reviews',
+      subtitle: 'Rubric evaluations & weekly retrospectives',
+      category: 'Sections',
+      keywords: ['reviews', 'mentors', 'retrospective', 'evaluations', 'rubric', 'ratings'],
+      to: '/feedback',
+      icon: <MessageSquare className="w-4 h-4 text-[#20C997]" />,
+    },
+    {
+      id: 'nav-support',
+      title: 'Support & Help Desk',
+      subtitle: 'Submit tickets & searchable FAQ answers',
+      category: 'Sections',
+      keywords: ['help', 'tickets', 'faq', 'issues', 'assistance', 'bugs', 'questions'],
+      to: '/support',
+      icon: <HelpCircle className="w-4 h-4 text-[#4DABF7]" />,
+    },
+    {
+      id: 'nav-profile',
+      title: 'Profile & Settings',
+      subtitle: 'Google identity, education & social links',
+      category: 'Sections',
+      keywords: ['account', 'settings', 'email', 'avatar', 'user', 'google', 'logout'],
+      to: '/profile',
+      icon: <User className="w-4 h-4 text-[#7950F2]" />,
+    },
+
+    // Projects
+    ...projects.map((proj) => ({
+      id: `proj-${proj.id}`,
+      title: proj.title,
+      subtitle: `${proj.difficulty} • Due ${proj.dueDate} • Status: ${proj.status}`,
+      category: 'Projects' as const,
+      keywords: ['project', proj.difficulty.toLowerCase(), proj.status.toLowerCase(), 'submission'],
+      to: '/projects',
+      icon: <FolderGit2 className="w-4 h-4 text-[#F06595]" />,
+    })),
+
+    // Curriculum Topics
+    ...course.modules.flatMap((mod) =>
+      mod.topics.map((topic) => ({
+        id: `topic-${topic.id}`,
+        title: topic.title,
+        subtitle: `Week ${mod.weekNumber}: ${mod.title} (${topic.durationMinutes} mins)`,
+        category: 'Topics' as const,
+        keywords: ['lesson', 'topic', `week ${mod.weekNumber}`, mod.title.toLowerCase()],
+        to: '/learning',
+        icon: <BookOpen className="w-4 h-4 text-[#20C997]" />,
+      }))
+    ),
+  ]
+
+  // Filter matching items
+  const trimmedQuery = query.trim().toLowerCase()
+  const matchingResults = trimmedQuery
+    ? allSearchItems.filter(
+        (item) =>
+          item.title.toLowerCase().includes(trimmedQuery) ||
+          item.subtitle.toLowerCase().includes(trimmedQuery) ||
+          item.category.toLowerCase().includes(trimmedQuery) ||
+          (item.keywords && item.keywords.some((k) => k.toLowerCase().includes(trimmedQuery)))
+      )
+    : []
+
+  // Handle clicking outside to close search dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Global Ctrl+K / Cmd+K shortcut
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        inputRef.current?.focus()
+        setIsOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
+
+  const handleSelectResult = (to: string) => {
+    navigate(to)
+    setQuery('')
+    setIsOpen(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setIsOpen(false)
+      inputRef.current?.blur()
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (matchingResults.length > 0) {
+        setSelectedIndex((prev) => (prev + 1) % matchingResults.length)
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (matchingResults.length > 0) {
+        setSelectedIndex((prev) => (prev - 1 + matchingResults.length) % matchingResults.length)
+      }
+    } else if (e.key === 'Enter') {
+      if (matchingResults.length > 0 && selectedIndex >= 0 && selectedIndex < matchingResults.length) {
+        e.preventDefault()
+        handleSelectResult(matchingResults[selectedIndex].to)
+      }
+    }
+  }
 
   return (
     <header className="h-[64px] min-h-[64px] bg-white border-b border-[#EDF0F6] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
-      {/* Left: Mobile Menu Trigger & Search */}
-      <div className="flex items-center gap-3 sm:gap-4 flex-1 max-w-md">
+      {/* Left: Mobile Menu Trigger & Interactive Search */}
+      <div className="flex items-center gap-3 sm:gap-4 flex-1 max-w-lg">
         <button
           onClick={onOpenMobileNav}
           className="lg:hidden p-2 text-[#64748B] hover:text-[#25324B] hover:bg-[#F5F7FC] rounded-[8px] min-h-[44px] min-w-[44px] flex items-center justify-center focus-ring cursor-pointer"
@@ -24,19 +225,119 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* Global Search Field */}
-        <div className="relative w-full hidden sm:block">
-          <Search className="w-4 h-4 text-[#8993A7] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="search"
-            placeholder="Search topics, projects, resources..."
-            className="w-full h-[40px] pl-10 pr-4 bg-[#F5F7FC] border border-[#EDF0F6] rounded-[8px] text-[14px] text-[#25324B] placeholder:text-[#8993A7] focus-ring transition-colors"
-          />
+        {/* Global Search Field with Interactive Dropdown */}
+        <div ref={searchContainerRef} className="relative w-full">
+          <div className="relative flex items-center">
+            <Search className="w-4 h-4 text-[#8993A7] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={inputRef}
+              type="text"
+              role="searchbox"
+              placeholder="Search topics, projects, resources..."
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setIsOpen(true)
+                setSelectedIndex(0)
+              }}
+              onFocus={() => {
+                if (query.trim()) setIsOpen(true)
+              }}
+              onKeyDown={handleKeyDown}
+              className="w-full h-[40px] pl-10 pr-16 bg-[#F5F7FC] border border-[#EDF0F6] rounded-[8px] text-[16px] md:text-[14px] text-[#25324B] placeholder:text-[#8993A7] focus-ring transition-colors"
+            />
+            <div className="absolute right-2.5 flex items-center gap-1">
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('')
+                    setIsOpen(false)
+                    setSelectedIndex(0)
+                    inputRef.current?.focus()
+                  }}
+                  className="p-1 text-[#8993A7] hover:text-[#25324B] rounded-md transition-colors cursor-pointer"
+                  aria-label="Clear search query"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              ) : (
+                <kbd className="hidden sm:inline-block text-[11px] font-medium text-[#8993A7] bg-white border border-[#EDF0F6] px-1.5 py-0.5 rounded shadow-2xs pointer-events-none">
+                  Ctrl K
+                </kbd>
+              )}
+            </div>
+          </div>
+
+          {/* Search Results Dropdown Panel */}
+          {isOpen && trimmedQuery && (
+            <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-[#EDF0F6] rounded-[12px] shadow-xl overflow-hidden z-50 max-h-[420px] flex flex-col animate-in fade-in zoom-in-98 duration-100">
+              <div className="px-3.5 py-2 border-b border-[#EDF0F6] bg-[#F8FAFF] flex items-center justify-between text-[11px] text-[#8993A7] font-semibold uppercase tracking-wider">
+                <span>Search Results ({matchingResults.length})</span>
+                <span className="hidden sm:inline">Use ↑↓ to navigate • Enter to select</span>
+              </div>
+
+              <div className="overflow-y-auto divide-y divide-[#EDF0F6]/60 flex-1">
+                {matchingResults.length === 0 ? (
+                  <div className="p-6 text-center text-[#64748B]">
+                    <p className="text-[14px] font-semibold text-[#25324B]">No results found</p>
+                    <p className="text-[12px] text-[#8993A7] mt-1">
+                      No matching sections, projects, or topics for "{query}".
+                    </p>
+                  </div>
+                ) : (
+                  matchingResults.map((result, idx) => (
+                    <button
+                      key={result.id}
+                      onClick={() => handleSelectResult(result.to)}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                      type="button"
+                      className={`w-full px-3.5 py-2.5 text-left flex items-start gap-3 transition-colors cursor-pointer group ${
+                        idx === selectedIndex ? 'bg-[#F3F0FF]' : 'hover:bg-[#F3F0FF]/50'
+                      }`}
+                    >
+                      <div className="p-2 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6] group-hover:bg-white group-hover:border-[#7950F2]/20 shrink-0 mt-0.5 transition-colors">
+                        {result.icon}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-[13px] font-semibold transition-colors truncate ${
+                            idx === selectedIndex ? 'text-[#7950F2]' : 'text-[#25324B] group-hover:text-[#7950F2]'
+                          }`}>
+                            {result.title}
+                          </p>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 border ${
+                            result.category === 'Sections'
+                              ? 'bg-[#F3F0FF] text-[#7950F2] border-[#7950F2]/20'
+                              : result.category === 'Projects'
+                              ? 'bg-[#FFF0F6] text-[#F06595] border-[#F06595]/20'
+                              : 'bg-[#E6FCF5] text-[#0CA678] border-[#20C997]/20'
+                          }`}>
+                            {result.category}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#64748B] truncate mt-0.5">
+                          {result.subtitle}
+                        </p>
+                      </div>
+
+                      <ArrowRight className={`w-3.5 h-3.5 text-[#7950F2] shrink-0 self-center transition-all ${
+                        idx === selectedIndex
+                          ? 'opacity-100 translate-x-0'
+                          : 'opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0'
+                      }`} />
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Right: Active Cohort Badge, Notifications, User Avatar */}
-      <div className="flex items-center gap-2.5 sm:gap-4">
+      <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
         {/* Active Track Badge */}
         <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F3F0FF] text-[#7950F2] text-[12px] font-semibold">
           <Sparkles className="w-3.5 h-3.5" />
@@ -74,4 +375,3 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
     </header>
   )
 }
-
