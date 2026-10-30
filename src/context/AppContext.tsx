@@ -370,10 +370,6 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { ...prevCourse, modules: nextModules }
     })
 
-    if (willBeCompleted) {
-      showToast('Topic Completed', 'Your curriculum progress has been updated!', 'success')
-    }
-
     if (isSupabaseConfigured && user && !isDemo) {
       try {
         if (willBeCompleted) {
@@ -383,6 +379,9 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           )
           if (syncError) {
             console.error('Supabase topic completion sync error:', syncError)
+            showToast('Database Sync Error', syncError.message, 'error')
+          } else {
+            showToast('Topic Completed', 'Your progress has been recorded in Supabase!', 'success')
           }
         } else {
           const { error: syncError } = await supabase
@@ -396,6 +395,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (err) {
         console.error('Supabase topic completion sync notice:', err)
       }
+    } else if (willBeCompleted) {
+      showToast('Topic Completed', 'Your curriculum progress has been updated!', 'success')
     }
   }
 
@@ -424,8 +425,6 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     )
 
-    showToast('Project Submitted', 'Your deliverables are now under mentor review.', 'success')
-
     if (isSupabaseConfigured && user && !isDemo) {
       try {
         const { error: syncError } = await supabase.from('project_submissions').upsert(
@@ -441,10 +440,15 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         )
         if (syncError) {
           console.error('Supabase project submission sync error:', syncError)
+          showToast('Database Sync Error', syncError.message, 'error')
+        } else {
+          showToast('Project Submitted', 'Your deliverables are now recorded in Supabase!', 'success')
         }
       } catch (err) {
         console.error('Supabase project submission sync notice:', err)
       }
+    } else {
+      showToast('Project Submitted', 'Your deliverables are now under mentor review.', 'success')
     }
   }
 
