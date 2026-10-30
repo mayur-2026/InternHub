@@ -15,6 +15,23 @@ export const LoginPage: React.FC = () => {
     return <Navigate to={from} replace />
   }
 
+  // If currently processing Google OAuth callback or session
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFF] flex flex-col justify-center items-center p-4 sm:p-6 text-[#25324B]">
+        <div className="w-full max-w-[440px] flex flex-col items-center">
+          <Card padding="lg" className="w-full text-center py-12">
+            <div className="w-10 h-10 border-3 border-[#7950F2] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <h2 className="text-[18px] font-bold text-[#25324B]">Signing in with Google</h2>
+            <p className="text-[13px] text-[#64748B] mt-1.5">
+              Verifying credentials and loading your internship workspace...
+            </p>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFF] flex flex-col justify-center items-center p-4 sm:p-6 text-[#25324B]">
       {/* Container */}

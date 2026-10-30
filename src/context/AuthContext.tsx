@@ -11,7 +11,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>
   loginAsDemo: () => void
   logout: () => Promise<void>
-  updateUserProfile: (updates: Partial<UserProfile>) => void
+  updateUserProfile: (updates: Partial<UserProfile>) => Promise<void>
   clearError: () => void
 }
 
@@ -21,8 +21,39 @@ const AUTH_STORAGE_KEY = 'internhub_auth_user'
 const DEMO_STORAGE_KEY = 'internhub_is_demo'
 const LOGGED_OUT_KEY = 'internhub_logged_out'
 
+// Detect if current browser URL is an incoming OAuth callback from Supabase/Google
+const isOAuthCallback = () => {
+  if (typeof window === 'undefined') return false
+  const hasCode = window.location.search.includes('code=')
+  const hasToken = window.location.hash.includes('access_token=')
+  const hasError = window.location.search.includes('error=') || window.location.hash.includes('error=')
+  return hasCode || hasToken || hasError
+}
+
+const getInitialOAuthError = (): string | null => {
+  if (typeof window === 'undefined') return null
+  const searchParams = new URLSearchParams(window.location.search)
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, '?'))
+  const msg =
+    searchParams.get('error_description') ||
+    hashParams.get('error_description') ||
+    searchParams.get('error') ||
+    hashParams.get('error')
+  return msg ? decodeURIComponent(msg.replace(/\+/g, ' ')) : null
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const hasIncomingCallback = isOAuthCallback()
+
+  // If returning from Google OAuth, clear explicit logged out flag
+  if (hasIncomingCallback && typeof window !== 'undefined') {
+    localStorage.removeItem(LOGGED_OUT_KEY)
+  }
+
   const [user, setUser] = useState<UserProfile | null>(() => {
+    // If incoming OAuth callback, start null and let verification complete
+    if (hasIncomingCallback) return null
+
     if (typeof window !== 'undefined' && localStorage.getItem(LOGGED_OUT_KEY) === 'true') {
       return null
     }
@@ -34,7 +65,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null
       }
     }
-    // Default to demo user on initial launch so reviewer immediately sees populated working demo
     return INITIAL_USER
   })
 
@@ -42,11 +72,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return typeof window !== 'undefined' && localStorage.getItem(DEMO_STORAGE_KEY) !== 'false'
   })
 
-  const [loading, setLoading] = useState<boolean>(false)
-  const [error, setError] = useState<string | null>(null)
+  const initialOAuthError = getInitialOAuthError()
+  const [loading, setLoading] = useState<boolean>(() => hasIncomingCallback && !initialOAuthError)
+  const [error, setError] = useState<string | null>(initialOAuthError)
 
   useEffect(() => {
     if (!isSupabaseConfigured) return
+
+    // Clean up any error query params once read
+    if (initialOAuthError && typeof window !== 'undefined') {
+      window.history.replaceState({}, document.title, window.location.pathname)
+      return
+    }
+
+    // 1. If PKCE auth code is present, exchange it for a session
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search)
+      const code = searchParams.get('code')
+      if (code) {
+        supabase.auth.exchangeCodeForSession(code).then(({ data, error: exchangeError }) => {
+          if (!exchangeError && data?.session?.user) {
+            syncUser(data.session.user)
+            window.history.replaceState({}, document.title, window.location.pathname)
+          } else if (exchangeError) {
+            setError(exchangeError.message)
+            setLoading(false)
+          }
+        })
+      }
+    }
 
     const syncUser = (authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => {
       const meta = authUser.user_metadata || {}
@@ -69,20 +123,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem(LOGGED_OUT_KEY)
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(syncedUser))
       localStorage.setItem(DEMO_STORAGE_KEY, 'false')
+      setLoading(false)
     }
 
     // Check existing active session on mount
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (!error && session?.user) {
+    supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
+      if (!sessionError && session?.user) {
         syncUser(session.user)
+      } else if (!hasIncomingCallback) {
+        setLoading(false)
       }
     })
 
     // Listen to real Supabase Auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         if (session?.user) {
           syncUser(session.user)
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setLoading(false)
         }
       }
     )
@@ -90,12 +150,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [hasIncomingCallback, initialOAuthError])
 
   const loginWithGoogle = async () => {
     try {
       setLoading(true)
       setError(null)
+      localStorage.removeItem(LOGGED_OUT_KEY)
 
       if (!isSupabaseConfigured) {
         // Fallback simulation if env variables are not yet populated
@@ -110,36 +171,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return
       }
 
+      // Explicitly redirect back to /dashboard with origin
+      const redirectUrl = `${window.location.origin}/dashboard`
+
       const { data, error: signInError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
-          skipBrowserRedirect: true,
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: false,
         },
       })
 
       if (signInError) throw signInError
 
       if (data?.url) {
-        // Pre-flight check the authorize URL to avoid landing on raw 400 JSON error if provider is not yet enabled
-        try {
-          const res = await fetch(data.url)
-          if (res.status === 400) {
-            const body = await res.json().catch(() => ({}))
-            if (body.msg && body.msg.includes('provider is not enabled')) {
-              setError(
-                'Google OAuth is not enabled in your Supabase project yet (Auth → Providers → Google). You can toggle it ON in your Supabase console, or click "Explore as Demo Student" to review all features immediately.'
-              )
-              setLoading(false)
-              return
-            }
-          }
-        } catch {
-          // If pre-flight check cannot run due to browser CORS, proceed directly
-        }
-
         window.location.href = data.url
-        return
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Google sign-in encountered an issue. Please try again.'
