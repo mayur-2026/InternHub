@@ -489,7 +489,7 @@ export const CATALOG_COURSE: Course = {
 
 export const CATALOG_PROJECTS: Project[] = INITIAL_PROJECTS.map((p) => ({
   ...p,
-  status: 'In Progress',
+  status: 'Not Started',
   submission: undefined,
 }))
 

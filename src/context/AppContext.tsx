@@ -59,6 +59,7 @@ interface AppContextType {
   streakInfo: StreakInfo
 
   // Actions & Mutations
+  startProject: (projectId: string) => Promise<boolean>
   toggleTopic: (topicId: string) => Promise<void>
   submitProject: (projectId: string, data: { repoUrl: string; demoUrl: string; notes: string }) => Promise<void>
   submitWeeklyReflection: (data: { whatWentWell: string; blockers: string; goalsForNextWeek: string }) => Promise<void>
@@ -302,22 +303,33 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             prevProjects.map((p) => {
               const remoteSub = subMap.get(p.id)
               if (remoteSub) {
+                const isStartedOnly =
+                  remoteSub.status === 'In Progress' && !remoteSub.repo_url && !remoteSub.demo_url
+                const startedAtTimestamp =
+                  remoteSub.started_at ||
+                  (remoteSub.notes?.startsWith('started_at:')
+                    ? remoteSub.notes.replace('started_at:', '')
+                    : undefined)
+
                 return {
                   ...p,
                   status: (remoteSub.status as Project['status']) || 'Under Review',
-                  submission: {
-                    repoUrl: remoteSub.repo_url,
-                    demoUrl: remoteSub.demo_url,
-                    notes: remoteSub.notes || '',
-                    submittedAt: new Date(remoteSub.submitted_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    }),
-                    submittedAtIso: remoteSub.submitted_at,
-                    grade: remoteSub.grade || undefined,
-                    mentorFeedback: remoteSub.mentor_feedback || undefined,
-                  },
+                  startedAt: startedAtTimestamp,
+                  submission: isStartedOnly
+                    ? undefined
+                    : {
+                        repoUrl: remoteSub.repo_url,
+                        demoUrl: remoteSub.demo_url,
+                        notes: remoteSub.notes || '',
+                        submittedAt: new Date(remoteSub.submitted_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        }),
+                        submittedAtIso: remoteSub.submitted_at,
+                        grade: remoteSub.grade || undefined,
+                        mentorFeedback: remoteSub.mentor_feedback || undefined,
+                      },
                 }
               }
               return p
@@ -382,6 +394,94 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     hydrateRemoteData()
     return () => {
       isMounted = false
+    }
+  }, [user, isDemo])
+
+  // Supabase Realtime channel subscription for live cross-device / mentor synchronization
+  useEffect(() => {
+    if (isDemo || !isSupabaseConfigured || !user) return
+
+    const channel = supabase
+      .channel(`rt_project_submissions_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'project_submissions',
+          filter: `student_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const row = payload.new as {
+              project_id: string
+              status: string
+              repo_url?: string
+              demo_url?: string
+              notes?: string
+              submitted_at?: string
+              started_at?: string
+              grade?: number
+              mentor_feedback?: string
+            }
+
+            if (!row || !row.project_id) return
+
+            const isStartedOnly =
+              row.status === 'In Progress' && !row.repo_url && !row.demo_url
+            const startedAtTimestamp =
+              row.started_at ||
+              (row.notes?.startsWith('started_at:')
+                ? row.notes.replace('started_at:', '')
+                : undefined)
+
+            setProjects((prev) =>
+              prev.map((p) => {
+                if (p.id === row.project_id) {
+                  return {
+                    ...p,
+                    status: (row.status as Project['status']) || p.status,
+                    startedAt: startedAtTimestamp || p.startedAt,
+                    submission: isStartedOnly
+                      ? undefined
+                      : {
+                          repoUrl: row.repo_url || '',
+                          demoUrl: row.demo_url || '',
+                          notes: row.notes || '',
+                          submittedAt: row.submitted_at
+                            ? new Date(row.submitted_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })
+                            : 'Recently',
+                          submittedAtIso: row.submitted_at,
+                          grade: row.grade || undefined,
+                          mentorFeedback: row.mentor_feedback || undefined,
+                        },
+                  }
+                }
+                return p
+              })
+            )
+          } else if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old as { project_id?: string }
+            if (oldRow?.project_id) {
+              setProjects((prev) =>
+                prev.map((p) =>
+                  p.id === oldRow.project_id
+                    ? { ...p, status: 'Not Started', submission: undefined, startedAt: undefined }
+                    : p
+                )
+              )
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
     }
   }, [user, isDemo])
 
@@ -565,6 +665,96 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
       ])
     }
+  }
+
+  // Start Project (Transitions from Not Started to In Progress with Supabase Persistence)
+  const startProject = async (projectId: string): Promise<boolean> => {
+    const targetProject = projects.find((p) => p.id === projectId)
+    if (!targetProject) return false
+
+    // Prevent duplicate start requests if already started or in flight
+    if (targetProject.status !== 'Not Started' && (targetProject.status as string) !== 'assigned') {
+      return true
+    }
+
+    const nowIso = new Date().toISOString()
+
+    // Supabase update for authenticated real students
+    if (isSupabaseConfigured && user && !isDemo) {
+      try {
+        const payload = {
+          project_id: projectId,
+          student_id: activeStudentId,
+          repo_url: '',
+          demo_url: '',
+          status: 'In Progress',
+          started_at: nowIso,
+        }
+
+        let { error: startError } = await supabase
+          .from('project_submissions')
+          .upsert(payload, { onConflict: 'student_id,project_id' })
+
+        // Graceful fallback if started_at column is not yet present in Supabase schema
+        if (startError && startError.code === 'PGRST204') {
+          const fallbackPayload = {
+            project_id: projectId,
+            student_id: activeStudentId,
+            repo_url: '',
+            demo_url: '',
+            status: 'In Progress',
+            notes: `started_at:${nowIso}`,
+          }
+          const fbResult = await supabase
+            .from('project_submissions')
+            .upsert(fallbackPayload, { onConflict: 'student_id,project_id' })
+          startError = fbResult.error
+        }
+
+        if (startError) {
+          console.error('Supabase start project error:', startError)
+          showToast('Database Sync Error', startError.message || 'Could not start project in Supabase', 'error')
+          return false
+        }
+      } catch (err) {
+        console.error('Supabase start project notice:', err)
+        showToast('Network Error', 'Failed to communicate with database', 'error')
+        return false
+      }
+    }
+
+    // Persist update in state & activity timestamps
+    setProjects((prev) =>
+      prev.map((proj) => {
+        if (proj.id === projectId) {
+          return {
+            ...proj,
+            status: 'In Progress',
+            startedAt: nowIso,
+          }
+        }
+        return proj
+      })
+    )
+
+    setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, nowIso])))
+
+    showToast('Project Started', `"${targetProject.title}" is now In Progress!`, 'success')
+
+    setNotifications((prev) => [
+      {
+        id: `notif_${Date.now()}`,
+        title: 'Project Started',
+        message: `Started sprint for "${targetProject.title}". Status: In Progress.`,
+        type: 'project',
+        timestamp: 'Just now',
+        isRead: false,
+        link: '/projects',
+      },
+      ...prev,
+    ])
+
+    return true
   }
 
   // Project Submission (Optimistic Update + Supabase Background Sync)
@@ -752,6 +942,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         averageRating,
         learningStreak,
         streakInfo,
+        startProject,
         toggleTopic,
         submitProject,
         submitWeeklyReflection,

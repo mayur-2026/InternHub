@@ -1,6 +1,6 @@
 import React from 'react'
 
-export type BadgeVariant = 'primary' | 'success' | 'warning' | 'info' | 'project' | 'error'
+export type BadgeVariant = 'primary' | 'success' | 'warning' | 'info' | 'project' | 'error' | 'neutral'
 
 export interface StatusBadgeProps {
   variant?: BadgeVariant
@@ -22,6 +22,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
     info: 'bg-[#E7F5FF] text-[#1864AB]',
     project: 'bg-[#FFF0F6] text-[#C2255C]',
     error: 'bg-[#FEF2F2] text-[#DC2626]',
+    neutral: 'bg-[#F1F3F5] text-[#495057]',
   }[variant]
 
   return (

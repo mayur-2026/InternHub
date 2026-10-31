@@ -86,6 +86,7 @@ export interface Project {
   estimatedHours: number
   techStack: string[]
   deliverables: string[]
+  startedAt?: string
   submission?: ProjectSubmission
 }
 

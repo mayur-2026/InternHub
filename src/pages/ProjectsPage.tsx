@@ -15,6 +15,7 @@ import {
   Star,
   Layers,
   Send,
+  Play,
   FolderOpen,
 } from 'lucide-react'
 import { EmptyState } from '../components/ui/FeedbackStates'
@@ -26,10 +27,12 @@ const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' })
 )
 
 export const ProjectsPage: React.FC = () => {
-  const { projects, submitProject, activeProjectsCount, approvedProjectsCount } = useApp()
+  const { projects, startProject, submitProject, activeProjectsCount, approvedProjectsCount } = useApp()
   const [filter, setFilter] = useState<string>('all')
   const [activeProjectToSubmit, setActiveProjectToSubmit] = useState<Project | null>(null)
   const [activeProjectToView, setActiveProjectToView] = useState<Project | null>(null)
+  const [activeProjectOverview, setActiveProjectOverview] = useState<Project | null>(null)
+  const [startingProjectId, setStartingProjectId] = useState<string | null>(null)
 
   // Submission Form State
   const [repoUrl, setRepoUrl] = useState('')
@@ -37,6 +40,19 @@ export const ProjectsPage: React.FC = () => {
   const [notes, setNotes] = useState('')
   const [formErrors, setFormErrors] = useState<{ repo?: string; demo?: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleStartProject = async (projectId: string) => {
+    if (startingProjectId) return
+    setStartingProjectId(projectId)
+    try {
+      const success = await startProject(projectId)
+      if (success && activeProjectOverview?.id === projectId) {
+        setActiveProjectOverview(null)
+      }
+    } finally {
+      setStartingProjectId(null)
+    }
+  }
 
   const filteredProjects = projects.filter((p) => {
     if (filter === 'all') return true
@@ -90,6 +106,8 @@ export const ProjectsPage: React.FC = () => {
         return <StatusBadge variant="warning">Under Review</StatusBadge>
       case 'In Progress':
         return <StatusBadge variant="project">In Progress</StatusBadge>
+      case 'Not Started':
+        return <StatusBadge variant="neutral">Not Started</StatusBadge>
       default:
         return <StatusBadge variant="info">Assigned</StatusBadge>
     }
@@ -225,15 +243,44 @@ export const ProjectsPage: React.FC = () => {
                     </Button>
                   )}
                 </div>
+              ) : project.status === 'In Progress' ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveProjectOverview(project)}
+                  >
+                    View Details
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleOpenSubmitModal(project)}
+                    icon={<Send className="w-3.5 h-3.5" />}
+                  >
+                    Submit Project
+                  </Button>
+                </div>
               ) : (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleOpenSubmitModal(project)}
-                  icon={<Send className="w-3.5 h-3.5" />}
-                >
-                  Submit Project
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveProjectOverview(project)}
+                  >
+                    View Details
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleStartProject(project.id)}
+                    isLoading={startingProjectId === project.id}
+                    disabled={startingProjectId !== null}
+                    icon={<Play className="w-3.5 h-3.5 fill-current" />}
+                  >
+                    Start Project
+                  </Button>
+                </div>
               )}
             </div>
           </Card>
@@ -399,6 +446,123 @@ export const ProjectsPage: React.FC = () => {
               <Button size="sm" variant="outline" onClick={() => setActiveProjectToView(null)}>
                 Close
               </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Project Overview Modal (Inspect details without starting/submitting) */}
+      {activeProjectOverview && (
+        <Modal
+          isOpen={true}
+          onClose={() => setActiveProjectOverview(null)}
+          title={activeProjectOverview.title}
+          description={`Estimated ~${activeProjectOverview.estimatedHours} hours • Due ${activeProjectOverview.dueDate}`}
+          maxWidth="lg"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
+              <div>
+                <p className="text-[12px] text-[#8993A7]">Current Status</p>
+                <div className="mt-1">{getStatusBadge(activeProjectOverview.status)}</div>
+              </div>
+              <div className="text-right">
+                <p className="text-[12px] text-[#8993A7]">Difficulty</p>
+                <p className="text-[13px] font-bold text-[#25324B] mt-1">
+                  {activeProjectOverview.difficulty}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[12px] font-semibold text-[#8993A7] uppercase tracking-wider mb-1">
+                Project Overview
+              </p>
+              <p className="text-[14px] text-[#25324B] leading-[22px]">
+                {activeProjectOverview.description}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[12px] font-semibold text-[#8993A7] uppercase tracking-wider mb-2">
+                Tech Stack & Tools
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {activeProjectOverview.techStack.map((tech) => (
+                  <span
+                    key={tech}
+                    className="px-2.5 py-1 rounded-[6px] bg-[#F5F7FC] border border-[#EDF0F6] text-[12px] font-medium text-[#25324B]"
+                  >
+                    {tech}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[12px] font-semibold text-[#8993A7] uppercase tracking-wider mb-2">
+                Required Deliverables
+              </p>
+              <ul className="space-y-1.5">
+                {activeProjectOverview.deliverables.map((deliv, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-[13px] text-[#64748B]">
+                    <CheckCircle2 className="w-4 h-4 text-[#20C997] shrink-0 mt-0.5" />
+                    <span>{deliv}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {activeProjectOverview.startedAt && (
+              <div className="p-3 rounded-[8px] bg-[#E7F5FF] border border-[#A5D8FF] text-[12px] text-[#1864AB] flex items-center gap-2">
+                <Clock className="w-4 h-4 shrink-0" />
+                <span>
+                  Sprint started on{' '}
+                  <strong>
+                    {new Date(activeProjectOverview.startedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </strong>
+                </span>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-[#EDF0F6] flex justify-end gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveProjectOverview(null)}
+              >
+                Close
+              </Button>
+              {activeProjectOverview.status === 'Not Started' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => handleStartProject(activeProjectOverview.id)}
+                  isLoading={startingProjectId === activeProjectOverview.id}
+                  disabled={startingProjectId !== null}
+                  icon={<Play className="w-3.5 h-3.5 fill-current" />}
+                >
+                  Start Project
+                </Button>
+              )}
+              {activeProjectOverview.status === 'In Progress' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    const proj = activeProjectOverview
+                    setActiveProjectOverview(null)
+                    handleOpenSubmitModal(proj)
+                  }}
+                  icon={<Send className="w-3.5 h-3.5" />}
+                >
+                  Submit Project
+                </Button>
+              )}
             </div>
           </div>
         </Modal>
