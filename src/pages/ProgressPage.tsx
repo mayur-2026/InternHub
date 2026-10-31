@@ -24,6 +24,7 @@ export const ProgressPage: React.FC = () => {
     completedTopicsCount,
     totalTopicsCount,
     approvedProjectsCount,
+    learningStreak,
   } = useApp()
 
   const underReviewCount = projects.filter((p) => p.status === 'Under Review').length
@@ -123,10 +124,10 @@ export const ProgressPage: React.FC = () => {
             <Flame className="w-5 h-5 text-[#FFB347]" />
           </div>
           <p className="text-[28px] font-bold text-[#25324B] mt-2 tracking-tight">
-            {isDemo ? '14 Days' : completedTopicsCount === 0 ? '0 Days' : `${Math.max(1, Math.ceil(completedTopicsCount / 2))} Days`}
+            {isDemo ? '14 Days' : `${learningStreak} ${learningStreak === 1 ? 'Day' : 'Days'}`}
           </p>
           <p className="text-[12px] text-[#64748B] mt-0.5">
-            {isDemo ? 'Top 10% cohort consistency' : completedTopicsCount === 0 ? 'Complete lessons to build streak' : 'Active study consistency'}
+            {isDemo ? 'Top 10% cohort consistency' : learningStreak === 0 ? 'Complete lessons to build streak' : 'Active study consistency'}
           </p>
           <div className="mt-3">
             <ProgressBar

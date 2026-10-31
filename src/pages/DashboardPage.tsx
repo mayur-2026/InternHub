@@ -33,6 +33,7 @@ export const DashboardPage: React.FC = () => {
     activeProjectsCount,
     approvedProjectsCount,
     averageRating,
+    learningStreak,
     toggleTopic,
   } = useApp()
 
@@ -106,11 +107,11 @@ export const DashboardPage: React.FC = () => {
         />
         <StatCard
           title="Study Consistency"
-          value={isDemo ? '14 Days' : completedTopicsCount === 0 ? '0 Days' : `${Math.max(1, Math.ceil(completedTopicsCount / 2))} Days`}
-          subtitle={isDemo ? '24.5 total hours logged' : completedTopicsCount === 0 ? 'Start your first lesson today' : `${(completedTopicsCount * 0.75).toFixed(1)} hours logged`}
+          value={isDemo ? '14 Days' : `${learningStreak} ${learningStreak === 1 ? 'Day' : 'Days'}`}
+          subtitle={isDemo ? '24.5 total hours logged' : learningStreak === 0 ? 'Start your first lesson today' : `${(completedTopicsCount * 0.75).toFixed(1)} hours logged`}
           icon={<Flame />}
           variant="warning"
-          trend={{ value: isDemo || completedTopicsCount > 0 ? 'Daily Streak 🔥' : 'Ready to Begin' }}
+          trend={{ value: isDemo || learningStreak > 0 ? 'Daily Streak 🔥' : 'Ready to Begin' }}
         />
         <StatCard
           title="Mentor Evaluation"

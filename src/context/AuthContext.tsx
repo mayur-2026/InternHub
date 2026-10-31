@@ -286,7 +286,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(updated)
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updated))
 
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && !isDemo) {
       try {
         await supabase.from('profiles').upsert({
           id: user.id,

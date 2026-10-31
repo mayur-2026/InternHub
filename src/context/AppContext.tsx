@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react'
 import type {
   InternshipInfo,
   Course,
@@ -10,6 +10,7 @@ import type {
   TicketCategory,
   TicketPriority,
   AppNotification,
+  StreakInfo,
 } from '../types'
 import {
   INITIAL_INTERNSHIP,
@@ -25,6 +26,7 @@ import {
 } from '../data/seedData'
 import { useAuth } from './AuthContext'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { calculateLearningStreak } from '../utils/streak'
 
 interface ToastMessage {
   id: string
@@ -53,6 +55,8 @@ interface AppContextType {
   activeProjectsCount: number
   approvedProjectsCount: number
   averageRating: number
+  learningStreak: number
+  streakInfo: StreakInfo
 
   // Actions & Mutations
   toggleTopic: (topicId: string) => Promise<void>
@@ -189,6 +193,20 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]
   })
 
+  // Persisted daily activity timestamps for consistent, timezone-aware streak tracking
+  const [persistedActivityTimestamps, setPersistedActivityTimestamps] = useState<string[]>(() => {
+    const key = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch {
+        return []
+      }
+    }
+    return []
+  })
+
   // Hydrate records from live Supabase database for authenticated real user
   useEffect(() => {
     if (isDemo || !isSupabaseConfigured || !user) return
@@ -239,6 +257,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               day: 'numeric',
               year: 'numeric',
             }),
+            createdAtIso: r.created_at,
             whatWentWell: r.what_went_well,
             blockers: r.blockers || '',
             goalsForNextWeek: r.goals_for_next_week,
@@ -249,19 +268,24 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // 3. Fetch topic completions from Supabase for this authenticated user
         const { data: remoteCompletions } = await supabase
           .from('topic_completions')
-          .select('topic_id')
+          .select('topic_id, completed_at')
           .eq('student_id', user.id)
 
         if (isMounted && remoteCompletions && remoteCompletions.length > 0) {
-          const completedSet = new Set(remoteCompletions.map((c) => c.topic_id))
+          const compMap = new Map(remoteCompletions.map((c) => [c.topic_id, c.completed_at]))
           setCourse((prevCourse) => ({
             ...prevCourse,
             modules: prevCourse.modules.map((mod) => ({
               ...mod,
-              topics: mod.topics.map((t) => ({
-                ...t,
-                isCompleted: t.isCompleted || completedSet.has(t.id),
-              })),
+              topics: mod.topics.map((t) => {
+                const remoteCompletedAt = compMap.get(t.id)
+                const isComp = t.isCompleted || compMap.has(t.id)
+                return {
+                  ...t,
+                  isCompleted: isComp,
+                  completedAt: remoteCompletedAt || (isComp ? t.completedAt || new Date().toISOString() : undefined),
+                }
+              }),
             })),
           }))
         }
@@ -290,6 +314,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       day: 'numeric',
                       year: 'numeric',
                     }),
+                    submittedAtIso: remoteSub.submitted_at,
                     grade: remoteSub.grade || undefined,
                     mentorFeedback: remoteSub.mentor_feedback || undefined,
                   },
@@ -324,6 +349,29 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setFeedbackList(newFeedback)
           } else {
             setFeedbackList([])
+          }
+        }
+
+        // 5. Aggregate all remote qualifying learning activity timestamps for persistent streak tracking
+        if (isMounted) {
+          const remoteTimestamps: string[] = []
+          if (remoteCompletions) {
+            for (const c of remoteCompletions) {
+              if (c.completed_at) remoteTimestamps.push(c.completed_at)
+            }
+          }
+          if (remoteSubmissions) {
+            for (const s of remoteSubmissions) {
+              if (s.submitted_at) remoteTimestamps.push(s.submitted_at)
+            }
+          }
+          if (remoteReflections) {
+            for (const r of remoteReflections) {
+              if (r.created_at) remoteTimestamps.push(r.created_at)
+            }
+          }
+          if (remoteTimestamps.length > 0) {
+            setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, ...remoteTimestamps])))
           }
         }
       } catch (err) {
@@ -362,6 +410,11 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const key = isDemo ? 'internhub_demo_notifications_data' : `internhub_notifications_${activeStudentId}`
     localStorage.setItem(key, JSON.stringify(notifications))
   }, [notifications, activeStudentId, isDemo])
+
+  useEffect(() => {
+    const key = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
+    localStorage.setItem(key, JSON.stringify(persistedActivityTimestamps))
+  }, [persistedActivityTimestamps, activeStudentId, isDemo])
 
   const unreadNotificationsCount = notifications.filter((n) => !n.isRead).length
 
@@ -408,16 +461,55 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ? Number((feedbackList.reduce((acc, f) => acc + f.overallRating, 0) / feedbackList.length).toFixed(1))
     : 0
 
+  // Combine all persisted qualifying learning activity timestamps (topics, projects, weekly reflections)
+  const allActivityTimestamps = useMemo(() => {
+    const timestamps = new Set<string>(persistedActivityTimestamps)
+
+    for (const mod of course.modules) {
+      for (const top of mod.topics) {
+        if (top.isCompleted && top.completedAt) {
+          timestamps.add(top.completedAt)
+        }
+      }
+    }
+
+    for (const proj of projects) {
+      if (proj.submission?.submittedAtIso) {
+        timestamps.add(proj.submission.submittedAtIso)
+      }
+    }
+
+    for (const ref of reflections) {
+      if (ref.createdAtIso) {
+        timestamps.add(ref.createdAtIso)
+      }
+    }
+
+    return Array.from(timestamps)
+  }, [persistedActivityTimestamps, course, projects, reflections])
+
+  // Production-grade streak calculation using timezone awareness and consecutive day stepping
+  const streakInfo = useMemo(() => {
+    return calculateLearningStreak(allActivityTimestamps)
+  }, [allActivityTimestamps])
+
+  const learningStreak = isDemo ? 14 : streakInfo.currentStreak
+
   // Topic Completion Toggle (Optimistic Update + Supabase Background Sync)
   const toggleTopic = async (topicId: string) => {
     const targetTopic = course.modules.flatMap((m) => m.topics).find((t) => t.id === topicId)
     const willBeCompleted = targetTopic ? !targetTopic.isCompleted : false
+    const nowIso = new Date().toISOString()
 
     setCourse((prevCourse) => {
       const nextModules = prevCourse.modules.map((mod) => {
         const nextTopics = mod.topics.map((top) => {
           if (top.id === topicId) {
-            return { ...top, isCompleted: !top.isCompleted }
+            return {
+              ...top,
+              isCompleted: willBeCompleted,
+              completedAt: willBeCompleted ? nowIso : undefined,
+            }
           }
           return top
         })
@@ -426,11 +518,15 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { ...prevCourse, modules: nextModules }
     })
 
+    if (willBeCompleted) {
+      setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, nowIso])))
+    }
+
     if (isSupabaseConfigured && user && !isDemo) {
       try {
         if (willBeCompleted) {
           const { error: syncError } = await supabase.from('topic_completions').upsert(
-            { student_id: activeStudentId, topic_id: topicId },
+            { student_id: activeStudentId, topic_id: topicId, completed_at: nowIso },
             { onConflict: 'student_id,topic_id' }
           )
           if (syncError) {
@@ -477,6 +573,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     data: { repoUrl: string; demoUrl: string; notes: string }
   ) => {
     const timestamp = getFormattedTimestamp()
+    const nowIso = new Date().toISOString()
 
     setProjects((prev) =>
       prev.map((proj) => {
@@ -489,12 +586,15 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               demoUrl: data.demoUrl,
               notes: data.notes,
               submittedAt: timestamp,
+              submittedAtIso: nowIso,
             },
           }
         }
         return proj
       })
     )
+
+    setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, nowIso])))
 
     if (isSupabaseConfigured && user && !isDemo) {
       try {
@@ -506,6 +606,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             demo_url: data.demoUrl,
             notes: data.notes,
             status: 'Under Review',
+            submitted_at: nowIso,
           },
           { onConflict: 'student_id,project_id' }
         )
@@ -540,15 +641,18 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Submit Weekly Reflection (Optimistic Update + Supabase Direct Insert)
   const submitWeeklyReflection = async (data: { whatWentWell: string; blockers: string; goalsForNextWeek: string }) => {
     const weekNum = reflections.length + 1
+    const nowIso = new Date().toISOString()
     const newRef: WeeklyReflection = {
       id: 'ref_' + generateToastId(),
       weekNumber: weekNum,
       date: getFormattedDate(),
+      createdAtIso: nowIso,
       whatWentWell: data.whatWentWell,
       blockers: data.blockers,
       goalsForNextWeek: data.goalsForNextWeek,
     }
     setReflections((prev) => [newRef, ...prev])
+    setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, nowIso])))
     showToast('Reflection Saved', 'Your weekly retrospective has been recorded.', 'success')
 
     setNotifications((prev) => [
@@ -572,6 +676,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           what_went_well: data.whatWentWell,
           blockers: data.blockers,
           goals_for_next_week: data.goalsForNextWeek,
+          created_at: nowIso,
         })
       } catch (err) {
         console.warn('Supabase reflection sync notice:', err)
@@ -645,6 +750,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeProjectsCount,
         approvedProjectsCount,
         averageRating,
+        learningStreak,
+        streakInfo,
         toggleTopic,
         submitProject,
         submitWeeklyReflection,

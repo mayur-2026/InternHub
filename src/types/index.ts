@@ -41,6 +41,7 @@ export interface Topic {
   title: string
   durationMinutes: number
   isCompleted: boolean
+  completedAt?: string
   description: string
   keyTakeaways: string[]
   codeSnippet?: string
@@ -70,6 +71,7 @@ export interface ProjectSubmission {
   demoUrl: string
   notes: string
   submittedAt: string
+  submittedAtIso?: string
   grade?: number
   mentorFeedback?: string
 }
@@ -108,9 +110,19 @@ export interface WeeklyReflection {
   id: string
   weekNumber: number
   date: string
+  createdAtIso?: string
   whatWentWell: string
   blockers: string
   goalsForNextWeek: string
+}
+
+export interface StreakInfo {
+  currentStreak: number
+  longestStreak: number
+  activeDaysCount: number
+  hasActivityToday: boolean
+  lastActiveDate: string | null
+  distinctDates: string[]
 }
 
 export type TicketCategory = 'Technical Issue' | 'Curriculum Doubt' | 'Deadline Extension' | 'General Inquiry'
