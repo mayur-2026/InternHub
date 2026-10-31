@@ -60,7 +60,9 @@ interface AppContextType {
 
   // Actions & Mutations
   startProject: (projectId: string) => Promise<boolean>
-  toggleTopic: (topicId: string) => Promise<void>
+  toggleTopic: (topicId: string) => Promise<boolean>
+  startTopic: (topicId: string) => void
+  startedTopicIds: string[]
   submitProject: (projectId: string, data: { repoUrl: string; demoUrl: string; notes: string }) => Promise<void>
   submitWeeklyReflection: (data: { whatWentWell: string; blockers: string; goalsForNextWeek: string }) => Promise<void>
   createTicket: (data: { subject: string; category: TicketCategory; priority: TicketPriority; description: string }) => Promise<void>
@@ -207,6 +209,32 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return []
   })
+
+  // Track started / in-progress lessons for student engagement
+  const [startedTopicIds, setStartedTopicIds] = useState<string[]>(() => {
+    const key = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch {
+        return []
+      }
+    }
+    return []
+  })
+
+  const startTopic = (topicId: string) => {
+    setStartedTopicIds((prev) => {
+      if (prev.includes(topicId)) return prev
+      const next = [...prev, topicId]
+      const key = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(key, JSON.stringify(next))
+      }
+      return next
+    })
+  }
 
   // Hydrate records from live Supabase database for authenticated real user
   useEffect(() => {
@@ -392,6 +420,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     hydrateRemoteData()
+
     return () => {
       isMounted = false
     }
@@ -480,8 +509,56 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
       .subscribe()
 
+    // Realtime subscription for live topic completion across sessions
+    const topicChannel = supabase
+      .channel(`rt_topic_completions_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'topic_completions',
+          filter: `student_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const row = payload.new as { topic_id?: string; completed_at?: string }
+            if (row?.topic_id) {
+              const compTopicId = row.topic_id
+              const compTimestamp = row.completed_at || new Date().toISOString()
+              setCourse((prevCourse) => ({
+                ...prevCourse,
+                modules: prevCourse.modules.map((mod) => ({
+                  ...mod,
+                  topics: mod.topics.map((t) =>
+                    t.id === compTopicId ? { ...t, isCompleted: true, completedAt: compTimestamp } : t
+                  ),
+                })),
+              }))
+              setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, compTimestamp])))
+            }
+          } else if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old as { topic_id?: string }
+            if (oldRow?.topic_id) {
+              const uncompTopicId = oldRow.topic_id
+              setCourse((prevCourse) => ({
+                ...prevCourse,
+                modules: prevCourse.modules.map((mod) => ({
+                  ...mod,
+                  topics: mod.topics.map((t) =>
+                    t.id === uncompTopicId ? { ...t, isCompleted: false, completedAt: undefined } : t
+                  ),
+                })),
+              }))
+            }
+          }
+        }
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(channel)
+      supabase.removeChannel(topicChannel)
     }
   }, [user, isDemo])
 
@@ -596,10 +673,11 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const learningStreak = isDemo ? 14 : streakInfo.currentStreak
 
   // Topic Completion Toggle (Optimistic Update + Supabase Background Sync)
-  const toggleTopic = async (topicId: string) => {
+  const toggleTopic = async (topicId: string): Promise<boolean> => {
     const targetTopic = course.modules.flatMap((m) => m.topics).find((t) => t.id === topicId)
     const willBeCompleted = targetTopic ? !targetTopic.isCompleted : false
     const nowIso = new Date().toISOString()
+    startTopic(topicId)
 
     setCourse((prevCourse) => {
       const nextModules = prevCourse.modules.map((mod) => {
@@ -665,6 +743,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
       ])
     }
+
+    return true
   }
 
   // Start Project (Transitions from Not Started to In Progress with Supabase Persistence)
@@ -678,8 +758,6 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const nowIso = new Date().toISOString()
-
-    // Supabase update for authenticated real students
     if (isSupabaseConfigured && user && !isDemo) {
       try {
         const payload = {
@@ -764,7 +842,6 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const timestamp = getFormattedTimestamp()
     const nowIso = new Date().toISOString()
-
     setProjects((prev) =>
       prev.map((proj) => {
         if (proj.id === projectId) {
@@ -944,6 +1021,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         streakInfo,
         startProject,
         toggleTopic,
+        startTopic,
+        startedTopicIds,
         submitProject,
         submitWeeklyReflection,
         createTicket,

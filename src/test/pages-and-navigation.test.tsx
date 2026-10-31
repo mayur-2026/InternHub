@@ -99,6 +99,14 @@ describe('End-to-End Application Audit: Pages, Workflows & Interactivity', () =>
 
     expect(screen.getByText(/learning curriculum/i)).toBeDefined()
 
+    // Select the first course to enter its curriculum and lessons
+    const courseButtons = screen.queryAllByRole('button', {
+      name: /continue learning|view course|review course/i,
+    })
+    if (courseButtons.length > 0) {
+      fireEvent.click(courseButtons[0])
+    }
+
     // Find incomplete topic and click checkbox
     const topicCheckboxes = screen.getAllByRole('button', {
       name: /mark complete|mark incomplete/i,
