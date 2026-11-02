@@ -1365,10 +1365,7 @@ export const LearningPage: React.FC = () => {
                       </div>
 
                       {/* Bottom Info on Thumbnail */}
-                      <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-white text-[11.5px] pointer-events-none">
-                        <span className="font-semibold flex items-center gap-1 drop-shadow-xs">
-                          <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Course {module.weekNumber}
-                        </span>
+                      <div className="absolute bottom-2.5 right-2.5 flex items-center justify-end text-white text-[11.5px] pointer-events-none">
                         {isCompleted ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10.5px] font-bold shadow-xs">
                             <Check className="w-3 h-3" /> Completed

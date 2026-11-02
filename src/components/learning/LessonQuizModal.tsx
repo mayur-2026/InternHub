@@ -42,8 +42,11 @@ export const LessonQuizModal: React.FC<LessonQuizModalProps> = ({
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({})
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [validationWarning, setValidationWarning] = useState<string | null>(null)
+  const [unansweredIndices, setUnansweredIndices] = useState<number[]>([])
 
-  const allAnswered = quizQuestions.every((_, idx) => selectedAnswers[idx] !== undefined)
+  const answeredCount = Object.keys(selectedAnswers).length
+  const allAnswered = answeredCount === totalQuestions && quizQuestions.every((_, idx) => selectedAnswers[idx] !== undefined)
 
   // Compute test results & score
   const correctCount = quizQuestions.reduce((acc, q, idx) => {
@@ -60,10 +63,35 @@ export const LessonQuizModal: React.FC<LessonQuizModalProps> = ({
       ...prev,
       [qIdx]: optIdx,
     }))
+    // Clear validation warning for this question
+    setUnansweredIndices((prev) => prev.filter((idx) => idx !== qIdx))
+    if (unansweredIndices.length <= 1) {
+      setValidationWarning(null)
+    }
   }
 
-  const handleSubmit = async () => {
-    if (!allAnswered || isSaving) return
+  const handleSubmit = async (forceSubmit = false) => {
+    if (isSaving) return
+
+    // Find any unanswered questions
+    if (!allAnswered && !forceSubmit) {
+      const missing = quizQuestions
+        .map((_, idx) => idx)
+        .filter((idx) => selectedAnswers[idx] === undefined)
+      setUnansweredIndices(missing)
+      setValidationWarning(
+        `Please answer Question ${missing[0] + 1} before submitting (${answeredCount} of ${totalQuestions} answered).`
+      )
+      // Smooth scroll to the first unanswered question
+      const missingElem = document.getElementById(`quiz-question-${missing[0]}`)
+      if (missingElem && typeof missingElem.scrollIntoView === 'function') {
+        missingElem.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      return
+    }
+
+    setValidationWarning(null)
+    setUnansweredIndices([])
     setIsSubmitted(true)
 
     // Passing threshold >= 80% (e.g. 4 of 5 or 5 of 5)
@@ -80,6 +108,8 @@ export const LessonQuizModal: React.FC<LessonQuizModalProps> = ({
   const handleReset = () => {
     setSelectedAnswers({})
     setIsSubmitted(false)
+    setValidationWarning(null)
+    setUnansweredIndices([])
   }
 
   const handleProceedNext = () => {
@@ -107,7 +137,7 @@ export const LessonQuizModal: React.FC<LessonQuizModalProps> = ({
                   Test Instructions ({totalQuestions} Questions):
                 </span>
                 <span className="text-[11.5px] font-bold text-[#7950F2] bg-white px-2 py-0.5 rounded-full border border-[#7950F2]/20 shadow-2xs">
-                  {Object.keys(selectedAnswers).length} of {totalQuestions} answered
+                  {answeredCount} of {totalQuestions} answered
                 </span>
               </div>
               <p className="text-[12.5px] text-[#475569]">
@@ -191,24 +221,39 @@ export const LessonQuizModal: React.FC<LessonQuizModalProps> = ({
             return (
               <div
                 key={q.id}
+                id={`quiz-question-${qIdx}`}
                 className={`p-4 rounded-xl border transition-all ${
                   isSubmitted
                     ? isCorrect
                       ? 'border-emerald-300 bg-emerald-50/30'
                       : 'border-rose-300 bg-rose-50/20'
+                    : unansweredIndices.includes(qIdx)
+                    ? 'border-amber-400 bg-amber-50/25 ring-2 ring-amber-300/60 shadow-xs'
                     : 'border-[#E2E8F0] bg-white'
                 }`}
               >
                 {/* Question Prompt */}
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                    <span
+                      className={`w-5 h-5 rounded-full font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5 ${
+                        unansweredIndices.includes(qIdx) && !isSubmitted
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
                       {qIdx + 1}
                     </span>
                     <h4 className="text-[13.5px] font-semibold text-[#0F172A] leading-snug">
                       {q.question}
                     </h4>
                   </div>
+
+                  {unansweredIndices.includes(qIdx) && !isSubmitted && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-amber-100 text-amber-800 border border-amber-300/80">
+                      Answer Required
+                    </span>
+                  )}
 
                   {isSubmitted && (
                     <span
@@ -258,6 +303,7 @@ export const LessonQuizModal: React.FC<LessonQuizModalProps> = ({
                           name={`quiz_q_${q.id}`}
                           checked={isSelected}
                           onChange={() => handleSelectOption(qIdx, optIdx)}
+                          onClick={(e) => e.stopPropagation()}
                           className="mt-0.5 accent-[#7950F2] shrink-0 cursor-pointer"
                         />
                         <span className="leading-snug">{opt}</span>
@@ -280,6 +326,23 @@ export const LessonQuizModal: React.FC<LessonQuizModalProps> = ({
             )
           })}
         </div>
+
+        {/* Validation Warning Alert */}
+        {validationWarning && (
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-amber-900 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 text-[12.5px] font-medium">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{validationWarning}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSubmit(true)}
+              className="text-[12px] font-bold text-amber-800 hover:text-amber-950 underline shrink-0 cursor-pointer text-left sm:text-right"
+            >
+              Submit Incomplete Test Anyway
+            </button>
+          </div>
+        )}
 
         {/* Modal Actions */}
         <div className="pt-3 border-t border-[#F1F5F9] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -331,8 +394,8 @@ export const LessonQuizModal: React.FC<LessonQuizModalProps> = ({
               <Button
                 variant="primary"
                 size="sm"
-                onClick={handleSubmit}
-                disabled={!allAnswered || isSaving}
+                onClick={() => handleSubmit(false)}
+                disabled={isSaving}
                 className="text-[12.5px] font-semibold shadow-sm"
                 icon={<CheckCircle2 className="w-3.5 h-3.5" />}
               >

@@ -19,13 +19,19 @@ import {
 import { Button } from '../ui/Button'
 import type { Topic } from '../../types'
 
-const RELIABLE_VIDEO_SOURCES = [
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
+const LOCAL_VIDEO_SOURCES = [
+  '/videos/lesson-1.mp4',
+  '/videos/lesson-2.mp4',
+  '/videos/lesson-3.mp4',
+  '/videos/lesson-4.mp4',
 ]
+
+const FALLBACK_ONLINE_SOURCES = [
+  'https://raw.githubusercontent.com/mdn/learning-area/master/html/multimedia-and-embedding/video-and-audio-content/rabbit320.mp4',
+  'https://www.w3schools.com/html/mov_bbb.mp4',
+]
+
+const ALL_VIDEO_SOURCES = [...LOCAL_VIDEO_SOURCES, ...FALLBACK_ONLINE_SOURCES]
 
 const SPEED_RATES = [1, 1.25, 1.5, 2, 0.75]
 
@@ -72,53 +78,122 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
   const [captionsEnabled, setCaptionsEnabled] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isControlsVisible, setIsControlsVisible] = useState(true)
-  const [hasVideoError, setHasVideoError] = useState(false)
+  const [sourceIndex, setSourceIndex] = useState(lessonIndex % LOCAL_VIDEO_SOURCES.length)
+  const [isSimulatedPlayback, setIsSimulatedPlayback] = useState(false)
   const [localWatched, setLocalWatched] = useState(hasWatched)
 
   useEffect(() => {
     setLocalWatched(hasWatched)
-  }, [hasWatched, topic.id])
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setIsSimulatedPlayback(false)
+    setSourceIndex(lessonIndex % LOCAL_VIDEO_SOURCES.length)
+  }, [hasWatched, topic.id, lessonIndex])
 
   const handleVideoComplete = useCallback(() => {
     setLocalWatched(true)
     onVideoWatched(topic.id)
   }, [onVideoWatched, topic.id])
 
-  // Pick video source based on lesson index
-  const videoSrc = RELIABLE_VIDEO_SOURCES[lessonIndex % RELIABLE_VIDEO_SOURCES.length]
+  // Current video source
+  const videoSrc = ALL_VIDEO_SOURCES[sourceIndex % ALL_VIDEO_SOURCES.length]
+
+  const handleVideoError = () => {
+    if (sourceIndex < ALL_VIDEO_SOURCES.length - 1) {
+      setSourceIndex((prev) => prev + 1)
+    } else {
+      setIsSimulatedPlayback(true)
+    }
+  }
 
   // Play / Pause toggle
   const togglePlay = useCallback(() => {
-    if (!videoRef.current) return
+    if (isSimulatedPlayback) {
+      setIsPlaying((prev) => !prev)
+      return
+    }
+
+    if (!videoRef.current) {
+      setIsSimulatedPlayback(true)
+      setIsPlaying((prev) => !prev)
+      return
+    }
+
     if (isPlaying) {
       videoRef.current.pause()
       setIsPlaying(false)
     } else {
-      videoRef.current.play().then(() => {
+      const playPromise = videoRef.current.play()
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true)
+          })
+          .catch((err) => {
+            console.warn('Direct video play error, attempting muted or simulation:', err)
+            if (videoRef.current) {
+              videoRef.current.muted = true
+              setIsMuted(true)
+              videoRef.current
+                .play()
+                .then(() => {
+                  setIsPlaying(true)
+                })
+                .catch(() => {
+                  setIsSimulatedPlayback(true)
+                  setIsPlaying(true)
+                })
+            } else {
+              setIsSimulatedPlayback(true)
+              setIsPlaying(true)
+            }
+          })
+      } else {
         setIsPlaying(true)
-      }).catch(() => {
-        setIsPlaying(false)
-      })
+      }
     }
-  }, [isPlaying])
+  }, [isPlaying, isSimulatedPlayback])
+
+  // Simulated interactive lecture playback timer
+  useEffect(() => {
+    if (!isSimulatedPlayback || !isPlaying) return
+
+    const interval = setInterval(() => {
+      setCurrentTime((prev) => {
+        const nextTime = prev + 0.5 * playbackRate
+        if (nextTime >= duration) {
+          setIsPlaying(false)
+          handleVideoComplete()
+          return duration
+        }
+        if (!localWatched && (nextTime >= 15 || nextTime >= duration * 0.8)) {
+          handleVideoComplete()
+        }
+        return nextTime
+      })
+    }, 500)
+
+    return () => clearInterval(interval)
+  }, [isSimulatedPlayback, isPlaying, playbackRate, duration, localWatched, handleVideoComplete])
 
   // 15 seconds skip backward
   const handleSkipBackward = useCallback(() => {
-    if (!videoRef.current) return
-    const newTime = Math.max(0, videoRef.current.currentTime - 15)
-    videoRef.current.currentTime = newTime
+    const newTime = Math.max(0, currentTime - 15)
+    if (videoRef.current && !isSimulatedPlayback) {
+      videoRef.current.currentTime = newTime
+    }
     setCurrentTime(newTime)
-  }, [])
+  }, [currentTime, isSimulatedPlayback])
 
   // Playback speed cycle: 1x -> 1.25x -> 1.5x -> 2x -> 0.75x
   const handleCycleSpeed = useCallback(() => {
     const nextIdx = (SPEED_RATES.indexOf(playbackRate) + 1) % SPEED_RATES.length
     const nextRate = SPEED_RATES[nextIdx]
     setPlaybackRate(nextRate)
-    if (videoRef.current) {
+    if (videoRef.current && !isSimulatedPlayback) {
       videoRef.current.playbackRate = nextRate
     }
-  }, [playbackRate])
+  }, [playbackRate, isSimulatedPlayback])
 
   // Mute toggle
   const toggleMute = useCallback(() => {
@@ -144,7 +219,7 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
 
   // Video time update listener
   const handleTimeUpdate = () => {
-    if (!videoRef.current) return
+    if (!videoRef.current || isSimulatedPlayback) return
     const cur = videoRef.current.currentTime
     const dur = videoRef.current.duration || duration
     setCurrentTime(cur)
@@ -155,7 +230,7 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
 
   // Video metadata loaded
   const handleLoadedMetadata = () => {
-    if (!videoRef.current) return
+    if (!videoRef.current || isSimulatedPlayback) return
     if (videoRef.current.duration && !isNaN(videoRef.current.duration)) {
       setDuration(videoRef.current.duration)
     }
@@ -167,7 +242,7 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
     const rect = progressBarRef.current.getBoundingClientRect()
     const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     const targetTime = pos * duration
-    if (videoRef.current) {
+    if (videoRef.current && !isSimulatedPlayback) {
       videoRef.current.currentTime = targetTime
     }
     setCurrentTime(targetTime)
@@ -195,39 +270,72 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
         onMouseEnter={() => setIsControlsVisible(true)}
         onMouseLeave={() => isPlaying && setIsControlsVisible(false)}
       >
-        {/* Real HTML5 Video Element */}
-        <video
-          ref={videoRef}
-          src={videoSrc}
-          poster="/images/video-poster.jpg"
-          playsInline
-          className="w-full h-full object-cover cursor-pointer"
-          onClick={togglePlay}
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onError={() => setHasVideoError(true)}
-          onEnded={() => {
-            setIsPlaying(false)
-            handleVideoComplete()
-          }}
-        />
+        {/* Real HTML5 Video Element or Interactive Lecture Canvas */}
+        {!isSimulatedPlayback ? (
+          <video
+            ref={videoRef}
+            src={videoSrc}
+            poster="/images/video-poster.jpg"
+            playsInline
+            className="w-full h-full object-cover cursor-pointer"
+            onClick={togglePlay}
+            onTimeUpdate={handleTimeUpdate}
+            onLoadedMetadata={handleLoadedMetadata}
+            onError={handleVideoError}
+            onEnded={() => {
+              setIsPlaying(false)
+              handleVideoComplete()
+            }}
+          />
+        ) : (
+          /* Interactive Lecture Canvas & Animated Visualizer */
+          <div
+            onClick={togglePlay}
+            className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#0B0F19] via-[#1E1B4B] to-[#0A0D14] text-white p-6 text-center select-none cursor-pointer z-10"
+          >
+            {/* Visualizer and Slide Info */}
+            <div className="w-14 h-14 rounded-2xl bg-[#7950F2]/25 border border-[#7950F2]/40 flex items-center justify-center mb-3 shadow-lg">
+              <BookOpen className="w-7 h-7 text-[#A78BFA]" />
+            </div>
 
-        {/* Video Error Fallback */}
-        {hasVideoError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 text-white p-6 text-center z-10">
-            <BookOpen className="w-12 h-12 text-[#7950F2] mb-3" />
-            <h4 className="text-base font-semibold">Video Stream Ready</h4>
-            <p className="text-xs text-slate-300 max-w-md mt-1 mb-3">
-              Offline preview loaded for {topic.title} in {courseTitle}.
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#A78BFA] bg-[#7950F2]/15 px-3 py-0.5 rounded-full border border-[#7950F2]/30 mb-1.5 shadow-2xs">
+              {courseTitle} • Lesson {lessonIndex + 1}
+            </span>
+
+            <h4 className="text-base sm:text-xl font-bold text-white max-w-lg leading-snug">
+              {topic.title}
+            </h4>
+
+            <p className="text-xs text-slate-300 max-w-md mt-1 mb-4 leading-relaxed line-clamp-2">
+              {topic.description}
             </p>
+
+            {/* Animated Equalizer Waveform while playing */}
+            {isPlaying ? (
+              <div className="flex items-end gap-1.5 h-7 mb-3">
+                <span className="w-1.5 bg-[#00C4FF] rounded-full animate-bounce h-7" style={{ animationDuration: '0.6s' }} />
+                <span className="w-1.5 bg-[#7950F2] rounded-full animate-bounce h-4" style={{ animationDuration: '0.8s' }} />
+                <span className="w-1.5 bg-[#A78BFA] rounded-full animate-bounce h-6" style={{ animationDuration: '0.5s' }} />
+                <span className="w-1.5 bg-[#00C4FF] rounded-full animate-bounce h-3" style={{ animationDuration: '0.7s' }} />
+                <span className="w-1.5 bg-[#7950F2] rounded-full animate-bounce h-7" style={{ animationDuration: '0.9s' }} />
+              </div>
+            ) : (
+              <div className="text-[12px] text-slate-400 font-medium mb-3">
+                Click Play to start lesson stream
+              </div>
+            )}
+
             {!isCompleted && !localWatched && (
               <button
                 type="button"
-                onClick={handleVideoComplete}
-                className="px-3.5 py-1.5 rounded-lg bg-[#7950F2] hover:bg-[#6741D9] text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleVideoComplete()
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-[#7950F2] hover:bg-[#6741D9] text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5 border border-white/10 z-20"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Mark Video as Watched & Unlock Test</span>
+                <span>Mark Video as Watched &amp; Unlock Test</span>
               </button>
             )}
           </div>
@@ -235,27 +343,30 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
 
         {/* Closed Captions Overlay */}
         {captionsEnabled && isPlaying && (
-          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/85 text-white px-4 py-1.5 rounded-md text-[13px] font-medium tracking-wide shadow-md pointer-events-none max-w-xl text-center">
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/85 text-white px-4 py-1.5 rounded-md text-[13px] font-medium tracking-wide shadow-md pointer-events-none max-w-xl text-center z-25">
             [Narrator] &ldquo;In this lesson, we master {topic.title.toLowerCase()}...&rdquo;
           </div>
         )}
 
-        {/* Big Center Play Button (when paused) */}
+        {/* Big Center Play Button (when paused) - prominently visible and always clickable */}
         {!isPlaying && (
           <button
             type="button"
             onClick={togglePlay}
-            className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors cursor-pointer"
+            className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 hover:bg-black/50 transition-colors cursor-pointer z-30 group"
             aria-label="Play video"
           >
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/70 hover:bg-[#7950F2] text-white flex items-center justify-center shadow-2xl backdrop-blur-sm transition-all duration-200 transform group-hover:scale-105 border border-white/20">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-[#7950F2] hover:bg-[#6741D9] text-white flex items-center justify-center shadow-2xl backdrop-blur-sm transition-all duration-200 transform group-hover:scale-110 border-2 border-white/40 ring-4 ring-[#7950F2]/40">
               <Play className="w-8 h-8 sm:w-10 sm:h-10 ml-1 fill-white" />
             </div>
+            <span className="mt-3 px-3.5 py-1 rounded-full bg-black/80 backdrop-blur-md text-white text-[12px] font-bold border border-white/20 shadow-md group-hover:bg-[#7950F2] transition-colors">
+              Play Lesson Video
+            </span>
           </button>
         )}
 
         {/* Top Floating Badge: Lesson Title & Watched Status */}
-        <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none gap-2">
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none gap-2 z-30">
           <div className="flex items-center gap-2 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-white text-[12px] font-semibold">
             <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
             <span className="truncate max-w-[180px] sm:max-w-md">
@@ -280,9 +391,9 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
           </div>
         </div>
 
-        {/* Bottom Custom Video Controls Overlay (matching screenshot) */}
+        {/* Bottom Custom Video Controls Overlay (always on top z-30) */}
         <div
-          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8 pb-3 px-4 sm:px-5 transition-opacity duration-200 ${
+          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/80 to-transparent pt-8 pb-3 px-4 sm:px-5 transition-opacity duration-200 z-30 ${
             isControlsVisible || !isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >

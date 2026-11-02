@@ -180,6 +180,45 @@ describe('Video Learning Player & Sequential Lesson Locking', () => {
     expect(screen.getByText(/5 of 5 correct/i)).toBeDefined()
     expect(recordedScore).toBe(100)
   })
+
+  it('keeps submit test button clickable at all times and provides interactive validation when questions are incomplete', () => {
+    const mockTopic = {
+      id: 'top_1_1',
+      moduleId: 'mod_1',
+      title: 'React 19 Hooks',
+      durationMinutes: 45,
+      isCompleted: false,
+      description: 'Test description',
+      keyTakeaways: ['Takeaway 1'],
+    }
+
+    render(
+      <LessonQuizModal
+        isOpen={true}
+        onClose={() => {}}
+        topic={mockTopic}
+        courseNumber={1}
+        lessonNumber={1}
+        onPassed={() => {}}
+      />
+    )
+
+    const submitBtn = screen.getByRole('button', { name: /submit test & view score/i })
+    // Button must never be hard-disabled preventing clicks
+    expect(submitBtn.hasAttribute('disabled')).toBe(false)
+
+    // Clicking when no answers are selected triggers helpful validation
+    fireEvent.click(submitBtn)
+
+    expect(screen.getByText(/please answer question 1 before submitting/i)).toBeDefined()
+    expect(screen.getAllByText(/answer required/i).length).toBe(5)
+    expect(screen.getByText(/submit incomplete test anyway/i)).toBeDefined()
+
+    // Clicking "Submit Incomplete Test Anyway" proceeds without blocking the user
+    fireEvent.click(screen.getByText(/submit incomplete test anyway/i))
+    expect(screen.getByText('0%')).toBeDefined()
+    expect(screen.getByText(/needs retake/i)).toBeDefined()
+  })
   it('requires student to watch video before unlocking the test, preventing test access beforehand', () => {
     // In mod_4, topic 1 is active but unwatched
     renderLearningPage('/learning?course=mod_4')
