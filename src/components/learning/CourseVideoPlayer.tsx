@@ -19,20 +19,6 @@ import {
 import { Button } from '../ui/Button'
 import type { Topic } from '../../types'
 
-const LOCAL_VIDEO_SOURCES = [
-  '/videos/lesson-1.mp4',
-  '/videos/lesson-2.mp4',
-  '/videos/lesson-3.mp4',
-  '/videos/lesson-4.mp4',
-]
-
-const FALLBACK_ONLINE_SOURCES = [
-  'https://raw.githubusercontent.com/mdn/learning-area/master/html/multimedia-and-embedding/video-and-audio-content/rabbit320.mp4',
-  'https://www.w3schools.com/html/mov_bbb.mp4',
-]
-
-const ALL_VIDEO_SOURCES = [...LOCAL_VIDEO_SOURCES, ...FALLBACK_ONLINE_SOURCES]
-
 const SPEED_RATES = [1, 1.25, 1.5, 2, 0.75]
 
 interface CourseVideoPlayerProps {
@@ -55,7 +41,7 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
   topic,
   lessonIndex,
   totalLessons,
-  courseTitle,
+  courseTitle: _courseTitle,
   isCompleted,
   hasWatched,
   onVideoWatched,
@@ -66,28 +52,23 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
   onOpenDetails,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
 
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(topic.durationMinutes * 60 || 201)
+  const [duration] = useState(topic.durationMinutes * 60 || 201)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [captionsEnabled, setCaptionsEnabled] = useState(false)
+  const [captionsEnabled, setCaptionsEnabled] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isControlsVisible, setIsControlsVisible] = useState(true)
-  const [sourceIndex, setSourceIndex] = useState(lessonIndex % LOCAL_VIDEO_SOURCES.length)
-  const [isSimulatedPlayback, setIsSimulatedPlayback] = useState(false)
   const [localWatched, setLocalWatched] = useState(hasWatched)
 
   useEffect(() => {
     setLocalWatched(hasWatched)
     setIsPlaying(false)
     setCurrentTime(0)
-    setIsSimulatedPlayback(false)
-    setSourceIndex(lessonIndex % LOCAL_VIDEO_SOURCES.length)
   }, [hasWatched, topic.id, lessonIndex])
 
   const handleVideoComplete = useCallback(() => {
@@ -95,68 +76,14 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
     onVideoWatched(topic.id)
   }, [onVideoWatched, topic.id])
 
-  // Current video source
-  const videoSrc = ALL_VIDEO_SOURCES[sourceIndex % ALL_VIDEO_SOURCES.length]
-
-  const handleVideoError = () => {
-    if (sourceIndex < ALL_VIDEO_SOURCES.length - 1) {
-      setSourceIndex((prev) => prev + 1)
-    } else {
-      setIsSimulatedPlayback(true)
-    }
-  }
-
   // Play / Pause toggle
   const togglePlay = useCallback(() => {
-    if (isSimulatedPlayback) {
-      setIsPlaying((prev) => !prev)
-      return
-    }
+    setIsPlaying((prev) => !prev)
+  }, [])
 
-    if (!videoRef.current) {
-      setIsSimulatedPlayback(true)
-      setIsPlaying((prev) => !prev)
-      return
-    }
-
-    if (isPlaying) {
-      videoRef.current.pause()
-      setIsPlaying(false)
-    } else {
-      const playPromise = videoRef.current.play()
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            setIsPlaying(true)
-          })
-          .catch((err) => {
-            console.warn('Direct video play error, attempting muted or simulation:', err)
-            if (videoRef.current) {
-              videoRef.current.muted = true
-              setIsMuted(true)
-              videoRef.current
-                .play()
-                .then(() => {
-                  setIsPlaying(true)
-                })
-                .catch(() => {
-                  setIsSimulatedPlayback(true)
-                  setIsPlaying(true)
-                })
-            } else {
-              setIsSimulatedPlayback(true)
-              setIsPlaying(true)
-            }
-          })
-      } else {
-        setIsPlaying(true)
-      }
-    }
-  }, [isPlaying, isSimulatedPlayback])
-
-  // Simulated interactive lecture playback timer
+  // Interactive engineering lecture playback timer
   useEffect(() => {
-    if (!isSimulatedPlayback || !isPlaying) return
+    if (!isPlaying) return
 
     const interval = setInterval(() => {
       setCurrentTime((prev) => {
@@ -174,34 +101,23 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
     }, 500)
 
     return () => clearInterval(interval)
-  }, [isSimulatedPlayback, isPlaying, playbackRate, duration, localWatched, handleVideoComplete])
+  }, [isPlaying, playbackRate, duration, localWatched, handleVideoComplete])
 
   // 15 seconds skip backward
   const handleSkipBackward = useCallback(() => {
-    const newTime = Math.max(0, currentTime - 15)
-    if (videoRef.current && !isSimulatedPlayback) {
-      videoRef.current.currentTime = newTime
-    }
-    setCurrentTime(newTime)
-  }, [currentTime, isSimulatedPlayback])
+    setCurrentTime((prev) => Math.max(0, prev - 15))
+  }, [])
 
   // Playback speed cycle: 1x -> 1.25x -> 1.5x -> 2x -> 0.75x
   const handleCycleSpeed = useCallback(() => {
     const nextIdx = (SPEED_RATES.indexOf(playbackRate) + 1) % SPEED_RATES.length
-    const nextRate = SPEED_RATES[nextIdx]
-    setPlaybackRate(nextRate)
-    if (videoRef.current && !isSimulatedPlayback) {
-      videoRef.current.playbackRate = nextRate
-    }
-  }, [playbackRate, isSimulatedPlayback])
+    setPlaybackRate(SPEED_RATES[nextIdx])
+  }, [playbackRate])
 
   // Mute toggle
   const toggleMute = useCallback(() => {
-    if (!videoRef.current) return
-    const newMuted = !isMuted
-    videoRef.current.muted = newMuted
-    setIsMuted(newMuted)
-  }, [isMuted])
+    setIsMuted((prev) => !prev)
+  }, [])
 
   // Fullscreen toggle
   const toggleFullscreen = useCallback(() => {
@@ -217,34 +133,12 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
     }
   }, [])
 
-  // Video time update listener
-  const handleTimeUpdate = () => {
-    if (!videoRef.current || isSimulatedPlayback) return
-    const cur = videoRef.current.currentTime
-    const dur = videoRef.current.duration || duration
-    setCurrentTime(cur)
-    if (!localWatched && dur > 0 && (cur >= dur * 0.8 || cur >= 15)) {
-      handleVideoComplete()
-    }
-  }
-
-  // Video metadata loaded
-  const handleLoadedMetadata = () => {
-    if (!videoRef.current || isSimulatedPlayback) return
-    if (videoRef.current.duration && !isNaN(videoRef.current.duration)) {
-      setDuration(videoRef.current.duration)
-    }
-  }
-
   // Scrubber click/seek
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressBarRef.current) return
     const rect = progressBarRef.current.getBoundingClientRect()
     const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     const targetTime = pos * duration
-    if (videoRef.current && !isSimulatedPlayback) {
-      videoRef.current.currentTime = targetTime
-    }
     setCurrentTime(targetTime)
     if (!localWatched && (pos >= 0.8 || targetTime >= 15)) {
       handleVideoComplete()
@@ -261,6 +155,16 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
 
+  // Dynamic instructional narrator caption
+  const currentCaption =
+    currentTime < 10
+      ? `[Instructor] "Welcome to Lesson ${lessonIndex + 1}. In this session, we examine ${topic.title}."`
+      : currentTime < 25
+      ? `[Instructor] "Review the architectural patterns and strict code standards displayed in the IDE above."`
+      : currentTime < 45
+      ? `[Instructor] "Notice how these engineering practices prevent technical debt and ensure scalable execution."`
+      : `[Instructor] "Great work following along! Prepare to verify your comprehension in the knowledge test."`
+
   return (
     <div className="space-y-4">
       {/* 1. Real Video Player Container */}
@@ -270,81 +174,89 @@ export const CourseVideoPlayer: React.FC<CourseVideoPlayerProps> = ({
         onMouseEnter={() => setIsControlsVisible(true)}
         onMouseLeave={() => isPlaying && setIsControlsVisible(false)}
       >
-        {/* Real HTML5 Video Element or Interactive Lecture Canvas */}
-        {!isSimulatedPlayback ? (
-          <video
-            ref={videoRef}
-            src={videoSrc}
-            poster="/images/video-poster.jpg"
-            playsInline
-            className="w-full h-full object-cover cursor-pointer"
-            onClick={togglePlay}
-            onTimeUpdate={handleTimeUpdate}
-            onLoadedMetadata={handleLoadedMetadata}
-            onError={handleVideoError}
-            onEnded={() => {
-              setIsPlaying(false)
-              handleVideoComplete()
-            }}
-          />
-        ) : (
-          /* Interactive Lecture Canvas & Animated Visualizer */
-          <div
-            onClick={togglePlay}
-            className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#0B0F19] via-[#1E1B4B] to-[#0A0D14] text-white p-6 text-center select-none cursor-pointer z-10"
-          >
-            {/* Visualizer and Slide Info */}
-            <div className="w-14 h-14 rounded-2xl bg-[#7950F2]/25 border border-[#7950F2]/40 flex items-center justify-center mb-3 shadow-lg">
-              <BookOpen className="w-7 h-7 text-[#A78BFA]" />
+        {/* Interactive Engineering Lecture Studio */}
+        <div
+          onClick={togglePlay}
+          className="absolute inset-0 flex flex-col justify-between bg-gradient-to-br from-[#0B0F19] via-[#111827] to-[#0A0D14] text-white p-4 sm:p-6 select-none cursor-pointer overflow-hidden"
+        >
+          {/* Top IDE Window Header */}
+          <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
+              <span className="ml-2 font-mono text-[11px] sm:text-[12px] text-slate-400">
+                Lesson_{lessonIndex + 1}_Architecture.tsx
+              </span>
             </div>
-
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[#A78BFA] bg-[#7950F2]/15 px-3 py-0.5 rounded-full border border-[#7950F2]/30 mb-1.5 shadow-2xs">
-              {courseTitle} • Lesson {lessonIndex + 1}
-            </span>
-
-            <h4 className="text-base sm:text-xl font-bold text-white max-w-lg leading-snug">
-              {topic.title}
-            </h4>
-
-            <p className="text-xs text-slate-300 max-w-md mt-1 mb-4 leading-relaxed line-clamp-2">
-              {topic.description}
-            </p>
-
-            {/* Animated Equalizer Waveform while playing */}
-            {isPlaying ? (
-              <div className="flex items-end gap-1.5 h-7 mb-3">
-                <span className="w-1.5 bg-[#00C4FF] rounded-full animate-bounce h-7" style={{ animationDuration: '0.6s' }} />
-                <span className="w-1.5 bg-[#7950F2] rounded-full animate-bounce h-4" style={{ animationDuration: '0.8s' }} />
-                <span className="w-1.5 bg-[#A78BFA] rounded-full animate-bounce h-6" style={{ animationDuration: '0.5s' }} />
-                <span className="w-1.5 bg-[#00C4FF] rounded-full animate-bounce h-3" style={{ animationDuration: '0.7s' }} />
-                <span className="w-1.5 bg-[#7950F2] rounded-full animate-bounce h-7" style={{ animationDuration: '0.9s' }} />
-              </div>
-            ) : (
-              <div className="text-[12px] text-slate-400 font-medium mb-3">
-                Click Play to start lesson stream
+            {isPlaying && (
+              <div className="flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                <span>Lecture Stream Active</span>
               </div>
             )}
+          </div>
 
-            {!isCompleted && !localWatched && (
+          {/* Center: Live Code Implementation & Architecture Showcase */}
+          <div className="flex-1 my-2 sm:my-3 flex flex-col justify-center max-w-2xl mx-auto w-full">
+            <div className="bg-black/50 rounded-xl border border-white/10 p-3.5 sm:p-4 font-mono text-[11.5px] sm:text-[13px] leading-relaxed shadow-inner w-full backdrop-blur-xs">
+              <div className="text-[#A78BFA] text-[11px] mb-1.5 font-semibold">
+                // Curriculum Module • Lesson {lessonIndex + 1}
+              </div>
+              {topic.codeSnippet ? (
+                <pre className="text-emerald-400 overflow-x-auto whitespace-pre-wrap font-mono max-h-36 sm:max-h-44">
+                  <code>{topic.codeSnippet}</code>
+                </pre>
+              ) : (
+                <div className="space-y-1 text-slate-300">
+                  <p className="text-purple-400 font-semibold">export async function verifyLessonArchitecture() &#123;</p>
+                  <p className="pl-4 text-cyan-300">const module = await loadCurriculumModule('{topic.id}')</p>
+                  <p className="pl-4 text-emerald-400">console.log('Mastering {topic.title}')</p>
+                  <p className="pl-4 text-amber-300">return module.validateProductionReadiness()</p>
+                  <p className="text-purple-400 font-semibold">&#125;</p>
+                </div>
+              )}
+            </div>
+
+            {/* Waveform Equalizer when playing */}
+            {isPlaying ? (
+              <div className="flex items-center justify-center gap-1.5 h-6 mt-2.5">
+                <span className="w-1.5 bg-[#00C4FF] rounded-full animate-bounce h-6" style={{ animationDuration: '0.6s' }} />
+                <span className="w-1.5 bg-[#7950F2] rounded-full animate-bounce h-4" style={{ animationDuration: '0.8s' }} />
+                <span className="w-1.5 bg-[#A78BFA] rounded-full animate-bounce h-5" style={{ animationDuration: '0.5s' }} />
+                <span className="w-1.5 bg-[#00C4FF] rounded-full animate-bounce h-3" style={{ animationDuration: '0.7s' }} />
+                <span className="w-1.5 bg-[#7950F2] rounded-full animate-bounce h-6" style={{ animationDuration: '0.9s' }} />
+                <span className="w-1.5 bg-[#00C4FF] rounded-full animate-bounce h-4" style={{ animationDuration: '0.65s' }} />
+              </div>
+            ) : (
+              <div className="text-center text-[12px] text-slate-400 mt-2 font-medium">
+                Click Play to start lesson stream &amp; review architectural code
+              </div>
+            )}
+          </div>
+
+          {/* Quick Unlock Action if unwatched */}
+          {!isCompleted && !localWatched && (
+            <div className="flex justify-center pb-6 sm:pb-8">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
                   handleVideoComplete()
                 }}
-                className="px-3.5 py-1.5 rounded-lg bg-[#7950F2] hover:bg-[#6741D9] text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5 border border-white/10 z-20"
+                className="px-3.5 py-1.5 rounded-lg bg-[#7950F2] hover:bg-[#6741D9] text-white text-xs font-semibold shadow-md transition-colors cursor-pointer flex items-center gap-1.5 border border-white/10 z-20"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Mark Video as Watched &amp; Unlock Test</span>
               </button>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
         {/* Closed Captions Overlay */}
         {captionsEnabled && isPlaying && (
-          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/85 text-white px-4 py-1.5 rounded-md text-[13px] font-medium tracking-wide shadow-md pointer-events-none max-w-xl text-center z-25">
-            [Narrator] &ldquo;In this lesson, we master {topic.title.toLowerCase()}...&rdquo;
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/85 text-white px-4 py-1.5 rounded-md text-[12.5px] font-medium tracking-wide shadow-md pointer-events-none max-w-xl text-center z-25 border border-white/10">
+            {currentCaption}
           </div>
         )}
 
