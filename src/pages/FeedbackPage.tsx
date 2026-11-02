@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
+import type { FeedbackEvaluation } from '../types'
 import { PageHeader, EmptyState } from '../components/ui/FeedbackStates'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/StatusBadge'
@@ -12,6 +13,15 @@ import {
   Sparkles,
   MessageSquare,
 } from 'lucide-react'
+
+function getAverageCriteria(
+  evaluations: FeedbackEvaluation[],
+  key: keyof FeedbackEvaluation['criteria']
+): string {
+  if (evaluations.length === 0) return '—'
+  const total = evaluations.reduce((sum, item) => sum + item.criteria[key], 0)
+  return (total / evaluations.length).toFixed(1)
+}
 
 export const FeedbackPage: React.FC = () => {
   const { feedbackList, reflections, submitWeeklyReflection, averageRating } = useApp()
@@ -48,18 +58,10 @@ export const FeedbackPage: React.FC = () => {
   }
 
   const hasReviews = feedbackList.length > 0
-  const avgCode = hasReviews
-    ? (feedbackList.reduce((acc, f) => acc + f.criteria.codeQuality, 0) / feedbackList.length).toFixed(1)
-    : '—'
-  const avgArch = hasReviews
-    ? (feedbackList.reduce((acc, f) => acc + f.criteria.architecture, 0) / feedbackList.length).toFixed(1)
-    : '—'
-  const avgUi = hasReviews
-    ? (feedbackList.reduce((acc, f) => acc + f.criteria.uiux, 0) / feedbackList.length).toFixed(1)
-    : '—'
-  const avgComm = hasReviews
-    ? (feedbackList.reduce((acc, f) => acc + f.criteria.communication, 0) / feedbackList.length).toFixed(1)
-    : '—'
+  const avgCodeQuality = getAverageCriteria(feedbackList, 'codeQuality')
+  const avgArchitecture = getAverageCriteria(feedbackList, 'architecture')
+  const avgUiUx = getAverageCriteria(feedbackList, 'uiux')
+  const avgCommunication = getAverageCriteria(feedbackList, 'communication')
 
   return (
     <div className="space-y-6">
@@ -73,11 +75,11 @@ export const FeedbackPage: React.FC = () => {
         }
       />
 
-      {/* Top Banner / Summary */}
+      {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card padding="md" className="hero-gradient border-[#7950F2]/15 md:col-span-1">
           <span className="text-[12px] font-semibold uppercase tracking-wider text-[#7950F2]">
-            Standing & Standing Rating
+            Standing & Rating
           </span>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-[32px] font-bold text-[#25324B]">
@@ -91,10 +93,10 @@ export const FeedbackPage: React.FC = () => {
               : 'Evaluations appear after your first deliverable review'}
           </p>
           <div className="mt-3 flex items-center gap-1 text-[#FFB347]">
-            {[1, 2, 3, 4, 5].map((s) => (
+            {[1, 2, 3, 4, 5].map((starIndex) => (
               <Star
-                key={s}
-                className={`w-4 h-4 ${hasReviews && averageRating >= s ? 'fill-[#FFB347]' : 'text-[#EDF0F6]'}`}
+                key={starIndex}
+                className={`w-4 h-4 ${hasReviews && averageRating >= starIndex ? 'fill-[#FFB347]' : 'text-[#EDF0F6]'}`}
               />
             ))}
           </div>
@@ -107,27 +109,27 @@ export const FeedbackPage: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
             <div className="p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
               <p className="text-[11px] font-semibold text-[#8993A7] uppercase">Code Quality</p>
-              <p className="text-[18px] font-bold text-[#20C997] mt-1">{avgCode} {hasReviews ? '/ 5' : ''}</p>
+              <p className="text-[18px] font-bold text-[#20C997] mt-1">{avgCodeQuality} {hasReviews ? '/ 5' : ''}</p>
             </div>
             <div className="p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
               <p className="text-[11px] font-semibold text-[#8993A7] uppercase">Architecture</p>
-              <p className="text-[18px] font-bold text-[#7950F2] mt-1">{avgArch} {hasReviews ? '/ 5' : ''}</p>
+              <p className="text-[18px] font-bold text-[#7950F2] mt-1">{avgArchitecture} {hasReviews ? '/ 5' : ''}</p>
             </div>
             <div className="p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
               <p className="text-[11px] font-semibold text-[#8993A7] uppercase">UI / UX</p>
-              <p className="text-[18px] font-bold text-[#20C997] mt-1">{avgUi} {hasReviews ? '/ 5' : ''}</p>
+              <p className="text-[18px] font-bold text-[#20C997] mt-1">{avgUiUx} {hasReviews ? '/ 5' : ''}</p>
             </div>
             <div className="p-2.5 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
               <p className="text-[11px] font-semibold text-[#8993A7] uppercase">Communication</p>
-              <p className="text-[18px] font-bold text-[#7950F2] mt-1">{avgComm} {hasReviews ? '/ 5' : ''}</p>
+              <p className="text-[18px] font-bold text-[#7950F2] mt-1">{avgCommunication} {hasReviews ? '/ 5' : ''}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Two Column Layout: Mentor Reviews vs Weekly Reflection Form */}
+      {/* Mentor Reviews vs Weekly Retrospective Form */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Column 1: Mentor Reviews Feed */}
+        {/* Mentor Reviews */}
         <div className="space-y-4">
           <h3 className="text-[16px] font-bold text-[#25324B]">Mentor Rubric Evaluations</h3>
 
@@ -175,7 +177,7 @@ export const FeedbackPage: React.FC = () => {
           )}
         </div>
 
-        {/* Column 2: Weekly Reflection Submission Form */}
+        {/* Weekly Reflection Form */}
         <div className="space-y-4">
           <h3 className="text-[16px] font-bold text-[#25324B]">Weekly Self-Reflection</h3>
 
@@ -236,7 +238,7 @@ export const FeedbackPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Past Reflections Feed */}
+          {/* Past Reflections List */}
           <div className="space-y-3">
             <h4 className="text-[14px] font-semibold text-[#25324B]">Past Retrospectives</h4>
 
@@ -247,21 +249,21 @@ export const FeedbackPage: React.FC = () => {
                 icon={<Sparkles className="w-6 h-6" strokeWidth={1.75} />}
               />
             ) : (
-              reflections.map((ref) => (
-                <Card key={ref.id} padding="md" className="space-y-2">
+              reflections.map((reflection) => (
+                <Card key={reflection.id} padding="md" className="space-y-2">
                   <div className="flex items-center justify-between pb-2 border-b border-[#EDF0F6]">
-                    <span className="text-[13px] font-bold text-[#7950F2]">Week {ref.weekNumber} Retrospective</span>
+                    <span className="text-[13px] font-bold text-[#7950F2]">Week {reflection.weekNumber} Retrospective</span>
                     <span className="text-[12px] text-[#8993A7] flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5" /> {ref.date}
+                      <Calendar className="w-3.5 h-3.5" /> {reflection.date}
                     </span>
                   </div>
                   <div className="space-y-1 text-[13px]">
                     <p className="text-[#25324B] font-semibold">Highlights:</p>
-                    <p className="text-[#64748B] text-[12px]">{ref.whatWentWell}</p>
+                    <p className="text-[#64748B] text-[12px]">{reflection.whatWentWell}</p>
                   </div>
                   <div className="space-y-1 text-[13px] pt-1">
                     <p className="text-[#25324B] font-semibold">Next Goals:</p>
-                    <p className="text-[#64748B] text-[12px]">{ref.goalsForNextWeek}</p>
+                    <p className="text-[#64748B] text-[12px]">{reflection.goalsForNextWeek}</p>
                   </div>
                 </Card>
               ))

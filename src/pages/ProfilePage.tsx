@@ -33,7 +33,7 @@ export const ProfilePage: React.FC = () => {
   const { user, updateUserProfile, logout, isDemo } = useAuth()
   const { showToast } = useApp()
 
-  // Form State initialized from authenticated user
+  // Form state initialized from active user
   const [fullName, setFullName] = useState(user?.fullName || '')
   const [bio, setBio] = useState(user?.bio || '')
   const [university, setUniversity] = useState(user?.university || '')
@@ -42,25 +42,24 @@ export const ProfilePage: React.FC = () => {
   const [linkedinUrl, setLinkedinUrl] = useState(user?.linkedinUrl || '')
   const [isSaved, setIsSaved] = useState(false)
   const [errors, setErrors] = useState<{ fullName?: string; university?: string; graduationYear?: string }>({})
-
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
-    const newErrors: { fullName?: string; university?: string; graduationYear?: string } = {}
+    const validationErrors: { fullName?: string; university?: string; graduationYear?: string } = {}
 
     if (!fullName.trim()) {
-      newErrors.fullName = 'Full Name is required'
+      validationErrors.fullName = 'Full Name is required'
     }
     if (!university.trim()) {
-      newErrors.university = 'University or College name is required'
+      validationErrors.university = 'University or College name is required'
     }
     if (!graduationYear.trim()) {
-      newErrors.graduationYear = 'Graduation Year is required'
+      validationErrors.graduationYear = 'Graduation Year is required'
     }
 
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors)
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors)
       return
     }
 
@@ -94,10 +93,9 @@ export const ProfilePage: React.FC = () => {
         badge={<StatusBadge variant="primary">{user.role}</StatusBadge>}
       />
 
-      {/* Main Profile Header Banner */}
+      {/* Profile Header Card */}
       <Card padding="lg" className="border-[#EDF0F6]">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-          {/* Profile Avatar (80 × 80px) */}
           <div className="relative shrink-0">
             <img
               src={user.avatarUrl}
@@ -143,9 +141,9 @@ export const ProfilePage: React.FC = () => {
         </div>
       </Card>
 
-      {/* Two Column Layout: Edit Form vs Security & Account */}
+      {/* Main Profile Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Left Column: Editable Information Form (2 cols) */}
+        {/* Form Column */}
         <div className="lg:col-span-2">
           <Card padding="md">
             <CardHeader className="pb-4">
@@ -250,7 +248,7 @@ export const ProfilePage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Right Column: Account Management & Session Controls (1 col) */}
+        {/* Account & Session Column */}
         <div className="space-y-4">
           <Card padding="md">
             <CardHeader className="pb-3">

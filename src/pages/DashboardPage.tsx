@@ -37,9 +37,9 @@ export const DashboardPage: React.FC = () => {
     toggleTopic,
   } = useApp()
 
-  // Dynamically select current active module (the first module with incomplete topics)
+  // Find the first module containing incomplete topics as the active module
   const currentModule =
-    course.modules.find((m) => m.topics.some((t) => !t.isCompleted)) ||
+    course.modules.find((mod) => mod.topics.some((topic) => !topic.isCompleted)) ||
     course.modules[0] || {
       id: 'default',
       title: 'Curriculum Overview',
@@ -47,17 +47,19 @@ export const DashboardPage: React.FC = () => {
       weekNumber: 1,
       topics: [],
     }
-  const currentModuleTotal = currentModule.topics.length
-  const currentModuleCompletedCount = currentModule.topics.filter((t) => t.isCompleted).length
-  const currentModulePercent = currentModuleTotal > 0
-    ? Math.round((currentModuleCompletedCount / currentModuleTotal) * 100)
-    : 0
 
-  const activeUnapprovedProjects = projects.filter((p) => p.status !== 'Approved')
+  const currentModuleTotal = currentModule.topics.length
+  const currentModuleCompletedCount = currentModule.topics.filter((topic) => topic.isCompleted).length
+  const currentModulePercentage =
+    currentModuleTotal > 0
+      ? Math.round((currentModuleCompletedCount / currentModuleTotal) * 100)
+      : 0
+
+  const activeUnapprovedProjects = projects.filter((project) => project.status !== 'Approved')
 
   return (
     <div className="space-y-6">
-      {/* 1. Welcome Hero Banner */}
+      {/* Welcome Hero Banner */}
       <div className="relative overflow-hidden rounded-[12px] border border-[#7950F2]/15 hero-gradient p-5 sm:p-6 card-shadow">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="max-w-xl">
@@ -87,7 +89,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Four KPI Metric Cards (Responsive Grid) */}
+      {/* KPI Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           title="Curriculum Progress"
@@ -123,9 +125,9 @@ export const DashboardPage: React.FC = () => {
         />
       </div>
 
-      {/* 3. Main Dashboard Three-Column Layout (1.6fr / 1fr / 1.1fr on ≥1280px) */}
+      {/* Main Dashboard Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[1.6fr_1fr_1.1fr] gap-4 items-start">
-        {/* COLUMN 1: Active Projects Overview */}
+        {/* Column 1: Active Projects Overview */}
         <div className="space-y-4">
           <Card padding="md">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -185,7 +187,6 @@ export const DashboardPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Quick Learning Stats Card */}
           <Card padding="md" className="bg-white">
             <div className="flex items-center justify-between">
               <div>
@@ -204,21 +205,21 @@ export const DashboardPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* COLUMN 2: Current Learning Path & Interactive Topic Checklist */}
+        {/* Column 2: Current Learning Path & Interactive Topic Checklist */}
         <div className="space-y-4">
           <Card padding="md">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle>Current Module</CardTitle>
-                <p className="text-[12px] text-[#64748B] mt-0.5">Week {currentModule.weekNumber}: {currentModule.title}</p>
+                <p className="text-[12px] text-[#64748B] mt-0.5">Course {currentModule.weekNumber}: {currentModule.title}</p>
               </div>
               <span className="text-[12px] font-bold text-[#7950F2] bg-[#F3F0FF] px-2 py-0.5 rounded-full">
-                {currentModulePercent}%
+                {currentModulePercentage}%
               </span>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="mb-2">
-                <ProgressBar value={currentModulePercent} variant="primary" />
+                <ProgressBar value={currentModulePercentage} variant="primary" />
               </div>
 
               <div className="text-[12px] font-semibold text-[#8993A7] uppercase tracking-wider pt-1">
@@ -255,7 +256,7 @@ export const DashboardPage: React.FC = () => {
                       <p
                         className={`text-[13px] leading-[18px] font-medium ${
                           topic.isCompleted
-                            ? 'text-[#64748B] line-through'
+                            ? 'text-[#64748B]'
                             : 'text-[#25324B]'
                         }`}
                       >
@@ -276,9 +277,8 @@ export const DashboardPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* COLUMN 3: Mentor Card, Upcoming Deadlines & Recent Activity */}
+        {/* Column 3: Mentor Card & Deadlines */}
         <div className="space-y-4 lg:col-span-2 xl:col-span-1">
-          {/* Assigned Mentor Card */}
           <Card padding="md">
             <CardTitle>Assigned Mentor</CardTitle>
             <div className="mt-3 flex items-center gap-3">
@@ -320,7 +320,6 @@ export const DashboardPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Upcoming Deadlines with Dynamic Priority Pills */}
           <Card padding="md">
             <CardTitle>Upcoming Deadlines</CardTitle>
             <div className="mt-3 space-y-2.5">
@@ -361,4 +360,3 @@ export const DashboardPage: React.FC = () => {
     </div>
   )
 }
-

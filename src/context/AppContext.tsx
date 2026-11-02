@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react'
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
 import type {
   InternshipInfo,
   Course,
@@ -10,6 +10,7 @@ import type {
   TicketCategory,
   TicketPriority,
   AppNotification,
+  NotificationType,
   StreakInfo,
 } from '../types'
 import {
@@ -46,7 +47,7 @@ interface AppContextType {
   toasts: ToastMessage[]
   notifications: AppNotification[]
   unreadNotificationsCount: number
-  
+
   // Analytics & Computed Properties
   totalTopicsCount: number
   completedTopicsCount: number
@@ -60,7 +61,7 @@ interface AppContextType {
 
   // Actions & Mutations
   startProject: (projectId: string) => Promise<boolean>
-  toggleTopic: (topicId: string) => Promise<boolean>
+  toggleTopic: (topicId: string, score?: number) => Promise<boolean>
   startTopic: (topicId: string) => void
   startedTopicIds: string[]
   submitProject: (projectId: string, data: { repoUrl: string; demoUrl: string; notes: string }) => Promise<void>
@@ -76,24 +77,23 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
 let toastCounter = 0
-function generateToastId() {
+function generateToastId(): string {
   toastCounter += 1
   return `toast_${toastCounter}`
 }
 
-function getFormattedTimestamp() {
-  return (
-    new Date().toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    }) +
-    ' • ' +
-    new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  )
+function getFormattedTimestamp(): string {
+  const now = new Date()
+  const datePart = now.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  const timePart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  return `${datePart} • ${timePart}`
 }
 
-function getFormattedDate() {
+function getFormattedDate(): string {
   return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
@@ -104,8 +104,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [internship] = useState<InternshipInfo>(INITIAL_INTERNSHIP)
 
   const [course, setCourse] = useState<Course>(() => {
-    const key = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    const storageKey = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
     if (saved) {
       try {
         return JSON.parse(saved)
@@ -117,8 +117,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   })
 
   const [projects, setProjects] = useState<Project[]>(() => {
-    const key = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    const storageKey = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
     if (saved) {
       try {
         return JSON.parse(saved)
@@ -136,8 +136,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [reflections, setReflections] = useState<WeeklyReflection[]>(() => {
     if (isDemo) return DEMO_REFLECTIONS
-    const key = `internhub_reflections_${activeStudentId}`
-    const saved = localStorage.getItem(key)
+    const storageKey = `internhub_reflections_${activeStudentId}`
+    const saved = localStorage.getItem(storageKey)
     if (saved) {
       try {
         return JSON.parse(saved)
@@ -150,8 +150,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [tickets, setTickets] = useState<SupportTicket[]>(() => {
     if (isDemo) return DEMO_TICKETS
-    const key = `internhub_tickets_${activeStudentId}`
-    const saved = localStorage.getItem(key)
+    const storageKey = `internhub_tickets_${activeStudentId}`
+    const saved = localStorage.getItem(storageKey)
     if (saved) {
       try {
         return JSON.parse(saved)
@@ -165,13 +165,13 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [faqs] = useState<FAQItem[]>(INITIAL_FAQS)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const key = `internhub_notifications_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    const storageKey = `internhub_notifications_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
     if (saved) {
       try {
         return JSON.parse(saved)
       } catch {
-        // use default
+        // Fall back to initial welcome notification
       }
     }
     return [
@@ -198,8 +198,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Persisted daily activity timestamps for consistent, timezone-aware streak tracking
   const [persistedActivityTimestamps, setPersistedActivityTimestamps] = useState<string[]>(() => {
-    const key = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    const storageKey = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
     if (saved) {
       try {
         return JSON.parse(saved)
@@ -210,10 +210,10 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return []
   })
 
-  // Track started / in-progress lessons for student engagement
+  // Track started or in-progress lessons
   const [startedTopicIds, setStartedTopicIds] = useState<string[]>(() => {
-    const key = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    const storageKey = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
     if (saved) {
       try {
         return JSON.parse(saved)
@@ -224,19 +224,40 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return []
   })
 
-  const startTopic = (topicId: string) => {
-    setStartedTopicIds((prev) => {
-      if (prev.includes(topicId)) return prev
-      const next = [...prev, topicId]
-      const key = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(key, JSON.stringify(next))
-      }
-      return next
-    })
-  }
+  const startTopic = useCallback(
+    (topicId: string) => {
+      setStartedTopicIds((prev) => {
+        if (prev.includes(topicId)) return prev
+        const next = [...prev, topicId]
+        const storageKey = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(storageKey, JSON.stringify(next))
+        }
+        return next
+      })
+    },
+    [activeStudentId, isDemo]
+  )
 
-  // Hydrate records from live Supabase database for authenticated real user
+  const pushNotification = useCallback(
+    (title: string, message: string, type: NotificationType, link?: string) => {
+      setNotifications((prev) => [
+        {
+          id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          title,
+          message,
+          type,
+          timestamp: 'Just now',
+          isRead: false,
+          link,
+        },
+        ...prev,
+      ])
+    },
+    []
+  )
+
+  // Hydrate user workspace records from Supabase
   useEffect(() => {
     if (isDemo || !isSupabaseConfigured || !user) return
 
@@ -244,7 +265,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     async function hydrateRemoteData() {
       try {
-        // 1. Fetch support tickets from Supabase for this authenticated user
+        // 1. Fetch support tickets
         const { data: remoteTickets } = await supabase
           .from('support_tickets')
           .select('*')
@@ -252,25 +273,25 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .order('created_at', { ascending: false })
 
         if (isMounted && remoteTickets) {
-          const mapped: SupportTicket[] = remoteTickets.map((t) => ({
-            id: t.id,
-            ticketNumber: t.ticket_number,
-            subject: t.subject,
-            category: t.category as TicketCategory,
-            priority: t.priority as TicketPriority,
-            status: (t.status as SupportTicket['status']) || 'Open',
-            createdAt: new Date(t.created_at).toLocaleDateString('en-US', {
+          const mappedTickets: SupportTicket[] = remoteTickets.map((ticket) => ({
+            id: ticket.id,
+            ticketNumber: ticket.ticket_number,
+            subject: ticket.subject,
+            category: ticket.category as TicketCategory,
+            priority: ticket.priority as TicketPriority,
+            status: (ticket.status as SupportTicket['status']) || 'Open',
+            createdAt: new Date(ticket.created_at).toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
             }),
-            description: t.description,
-            lastReply: t.last_reply || undefined,
+            description: ticket.description,
+            lastReply: ticket.last_reply || undefined,
           }))
-          setTickets(mapped)
+          setTickets(mappedTickets)
         }
 
-        // 2. Fetch weekly reflections from Supabase for this authenticated user
+        // 2. Fetch weekly reflections
         const { data: remoteReflections } = await supabase
           .from('weekly_reflections')
           .select('*')
@@ -278,136 +299,136 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .order('created_at', { ascending: false })
 
         if (isMounted && remoteReflections) {
-          const mapped: WeeklyReflection[] = remoteReflections.map((r) => ({
-            id: r.id,
-            weekNumber: r.week_number,
-            date: new Date(r.created_at).toLocaleDateString('en-US', {
+          const mappedReflections: WeeklyReflection[] = remoteReflections.map((reflection) => ({
+            id: reflection.id,
+            weekNumber: reflection.week_number,
+            date: new Date(reflection.created_at).toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
             }),
-            createdAtIso: r.created_at,
-            whatWentWell: r.what_went_well,
-            blockers: r.blockers || '',
-            goalsForNextWeek: r.goals_for_next_week,
+            createdAtIso: reflection.created_at,
+            whatWentWell: reflection.what_went_well,
+            blockers: reflection.blockers || '',
+            goalsForNextWeek: reflection.goals_for_next_week,
           }))
-          setReflections(mapped)
+          setReflections(mappedReflections)
         }
 
-        // 3. Fetch topic completions from Supabase for this authenticated user
+        // 3. Fetch topic completions
         const { data: remoteCompletions } = await supabase
           .from('topic_completions')
           .select('topic_id, completed_at')
           .eq('student_id', user.id)
 
         if (isMounted && remoteCompletions && remoteCompletions.length > 0) {
-          const compMap = new Map(remoteCompletions.map((c) => [c.topic_id, c.completed_at]))
+          const completionMap = new Map(remoteCompletions.map((comp) => [comp.topic_id, comp.completed_at]))
           setCourse((prevCourse) => ({
             ...prevCourse,
-            modules: prevCourse.modules.map((mod) => ({
-              ...mod,
-              topics: mod.topics.map((t) => {
-                const remoteCompletedAt = compMap.get(t.id)
-                const isComp = t.isCompleted || compMap.has(t.id)
+            modules: prevCourse.modules.map((moduleItem) => ({
+              ...moduleItem,
+              topics: moduleItem.topics.map((topicItem) => {
+                const remoteCompletedAt = completionMap.get(topicItem.id)
+                const isCompleted = topicItem.isCompleted || completionMap.has(topicItem.id)
                 return {
-                  ...t,
-                  isCompleted: isComp,
-                  completedAt: remoteCompletedAt || (isComp ? t.completedAt || new Date().toISOString() : undefined),
+                  ...topicItem,
+                  isCompleted,
+                  completedAt: remoteCompletedAt || (isCompleted ? topicItem.completedAt || new Date().toISOString() : undefined),
                 }
               }),
             })),
           }))
         }
 
-        // 4. Fetch project submissions from Supabase for this authenticated user
+        // 4. Fetch project submissions
         const { data: remoteSubmissions } = await supabase
           .from('project_submissions')
           .select('*')
           .eq('student_id', user.id)
 
         if (isMounted && remoteSubmissions && remoteSubmissions.length > 0) {
-          const subMap = new Map(remoteSubmissions.map((s) => [s.project_id, s]))
+          const submissionMap = new Map(remoteSubmissions.map((submission) => [submission.project_id, submission]))
           setProjects((prevProjects) =>
-            prevProjects.map((p) => {
-              const remoteSub = subMap.get(p.id)
-              if (remoteSub) {
+            prevProjects.map((projectItem) => {
+              const remoteSubmission = submissionMap.get(projectItem.id)
+              if (remoteSubmission) {
                 const isStartedOnly =
-                  remoteSub.status === 'In Progress' && !remoteSub.repo_url && !remoteSub.demo_url
+                  remoteSubmission.status === 'In Progress' && !remoteSubmission.repo_url && !remoteSubmission.demo_url
                 const startedAtTimestamp =
-                  remoteSub.started_at ||
-                  (remoteSub.notes?.startsWith('started_at:')
-                    ? remoteSub.notes.replace('started_at:', '')
+                  remoteSubmission.started_at ||
+                  (remoteSubmission.notes?.startsWith('started_at:')
+                    ? remoteSubmission.notes.replace('started_at:', '')
                     : undefined)
 
                 return {
-                  ...p,
-                  status: (remoteSub.status as Project['status']) || 'Under Review',
+                  ...projectItem,
+                  status: (remoteSubmission.status as Project['status']) || 'Under Review',
                   startedAt: startedAtTimestamp,
                   submission: isStartedOnly
                     ? undefined
                     : {
-                        repoUrl: remoteSub.repo_url,
-                        demoUrl: remoteSub.demo_url,
-                        notes: remoteSub.notes || '',
-                        submittedAt: new Date(remoteSub.submitted_at).toLocaleDateString('en-US', {
+                        repoUrl: remoteSubmission.repo_url,
+                        demoUrl: remoteSubmission.demo_url,
+                        notes: remoteSubmission.notes || '',
+                        submittedAt: new Date(remoteSubmission.submitted_at).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric',
                         }),
-                        submittedAtIso: remoteSub.submitted_at,
-                        grade: remoteSub.grade || undefined,
-                        mentorFeedback: remoteSub.mentor_feedback || undefined,
+                        submittedAtIso: remoteSubmission.submitted_at,
+                        grade: remoteSubmission.grade || undefined,
+                        mentorFeedback: remoteSubmission.mentor_feedback || undefined,
                       },
                 }
               }
-              return p
+              return projectItem
             })
           )
 
-          // Derive genuine mentor feedback from graded submissions
-          const subsWithFeedback = remoteSubmissions.filter((s) => s.mentor_feedback || s.grade)
-          if (subsWithFeedback.length > 0) {
-            const newFeedback: FeedbackEvaluation[] = subsWithFeedback.map((s) => {
-              const proj = CATALOG_PROJECTS.find((p) => p.id === s.project_id)
+          // Derive mentor feedback from graded submissions
+          const submissionsWithFeedback = remoteSubmissions.filter((sub) => sub.mentor_feedback || sub.grade)
+          if (submissionsWithFeedback.length > 0) {
+            const derivedFeedback: FeedbackEvaluation[] = submissionsWithFeedback.map((sub) => {
+              const matchedProject = CATALOG_PROJECTS.find((p) => p.id === sub.project_id)
               return {
-                id: `fb_${s.id}`,
+                id: `fb_${sub.id}`,
                 mentorName: 'Dr. Sarah Lin',
                 mentorRole: 'Staff Architect & Lead Mentor',
                 mentorAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
-                date: new Date(s.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                overallRating: s.grade ? Number((s.grade / 20).toFixed(1)) : 4.8,
+                date: new Date(sub.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                overallRating: sub.grade ? Number((sub.grade / 20).toFixed(1)) : 4.8,
                 criteria: {
                   codeQuality: 5.0,
                   architecture: 4.8,
                   uiux: 4.9,
                   communication: 4.8,
                 },
-                projectName: proj?.title || 'Assigned Project',
-                comments: s.mentor_feedback || 'Deliverable successfully reviewed and approved.',
+                projectName: matchedProject?.title || 'Assigned Project',
+                comments: sub.mentor_feedback || 'Deliverable successfully reviewed and approved.',
               }
             })
-            setFeedbackList(newFeedback)
+            setFeedbackList(derivedFeedback)
           } else {
             setFeedbackList([])
           }
         }
 
-        // 5. Aggregate all remote qualifying learning activity timestamps for persistent streak tracking
+        // 5. Aggregate remote learning activity timestamps for persistent streak tracking
         if (isMounted) {
           const remoteTimestamps: string[] = []
           if (remoteCompletions) {
-            for (const c of remoteCompletions) {
-              if (c.completed_at) remoteTimestamps.push(c.completed_at)
+            for (const comp of remoteCompletions) {
+              if (comp.completed_at) remoteTimestamps.push(comp.completed_at)
             }
           }
           if (remoteSubmissions) {
-            for (const s of remoteSubmissions) {
-              if (s.submitted_at) remoteTimestamps.push(s.submitted_at)
+            for (const sub of remoteSubmissions) {
+              if (sub.submitted_at) remoteTimestamps.push(sub.submitted_at)
             }
           }
           if (remoteReflections) {
-            for (const r of remoteReflections) {
-              if (r.created_at) remoteTimestamps.push(r.created_at)
+            for (const reflection of remoteReflections) {
+              if (reflection.created_at) remoteTimestamps.push(reflection.created_at)
             }
           }
           if (remoteTimestamps.length > 0) {
@@ -426,11 +447,11 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [user, isDemo])
 
-  // Supabase Realtime channel subscription for live cross-device / mentor synchronization
+  // Realtime subscription for cross-device sync of project submissions and topic completions
   useEffect(() => {
     if (isDemo || !isSupabaseConfigured || !user) return
 
-    const channel = supabase
+    const projectChannel = supabase
       .channel(`rt_project_submissions_${user.id}`)
       .on(
         'postgres_changes',
@@ -465,12 +486,12 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 : undefined)
 
             setProjects((prev) =>
-              prev.map((p) => {
-                if (p.id === row.project_id) {
+              prev.map((projectItem) => {
+                if (projectItem.id === row.project_id) {
                   return {
-                    ...p,
-                    status: (row.status as Project['status']) || p.status,
-                    startedAt: startedAtTimestamp || p.startedAt,
+                    ...projectItem,
+                    status: (row.status as Project['status']) || projectItem.status,
+                    startedAt: startedAtTimestamp || projectItem.startedAt,
                     submission: isStartedOnly
                       ? undefined
                       : {
@@ -490,17 +511,17 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         },
                   }
                 }
-                return p
+                return projectItem
               })
             )
           } else if (payload.eventType === 'DELETE') {
             const oldRow = payload.old as { project_id?: string }
             if (oldRow?.project_id) {
               setProjects((prev) =>
-                prev.map((p) =>
-                  p.id === oldRow.project_id
-                    ? { ...p, status: 'Not Started', submission: undefined, startedAt: undefined }
-                    : p
+                prev.map((projectItem) =>
+                  projectItem.id === oldRow.project_id
+                    ? { ...projectItem, status: 'Not Started', submission: undefined, startedAt: undefined }
+                    : projectItem
                 )
               )
             }
@@ -509,7 +530,6 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
       .subscribe()
 
-    // Realtime subscription for live topic completion across sessions
     const topicChannel = supabase
       .channel(`rt_topic_completions_${user.id}`)
       .on(
@@ -530,8 +550,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...prevCourse,
                 modules: prevCourse.modules.map((mod) => ({
                   ...mod,
-                  topics: mod.topics.map((t) =>
-                    t.id === compTopicId ? { ...t, isCompleted: true, completedAt: compTimestamp } : t
+                  topics: mod.topics.map((top) =>
+                    top.id === compTopicId ? { ...top, isCompleted: true, completedAt: compTimestamp } : top
                   ),
                 })),
               }))
@@ -540,13 +560,13 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           } else if (payload.eventType === 'DELETE') {
             const oldRow = payload.old as { topic_id?: string }
             if (oldRow?.topic_id) {
-              const uncompTopicId = oldRow.topic_id
+              const uncompletedTopicId = oldRow.topic_id
               setCourse((prevCourse) => ({
                 ...prevCourse,
                 modules: prevCourse.modules.map((mod) => ({
                   ...mod,
-                  topics: mod.topics.map((t) =>
-                    t.id === uncompTopicId ? { ...t, isCompleted: false, completedAt: undefined } : t
+                  topics: mod.topics.map((top) =>
+                    top.id === uncompletedTopicId ? { ...top, isCompleted: false, completedAt: undefined } : top
                   ),
                 })),
               }))
@@ -557,86 +577,88 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(projectChannel)
       supabase.removeChannel(topicChannel)
     }
   }, [user, isDemo])
 
-  // Sync to local storage
+  // Synchronize state changes to client storage
   useEffect(() => {
-    const key = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
-    localStorage.setItem(key, JSON.stringify(course))
+    const storageKey = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
+    localStorage.setItem(storageKey, JSON.stringify(course))
   }, [course, activeStudentId, isDemo])
 
   useEffect(() => {
-    const key = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
-    localStorage.setItem(key, JSON.stringify(projects))
+    const storageKey = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
+    localStorage.setItem(storageKey, JSON.stringify(projects))
   }, [projects, activeStudentId, isDemo])
 
   useEffect(() => {
-    const key = isDemo ? 'internhub_demo_reflections_data' : `internhub_reflections_${activeStudentId}`
-    localStorage.setItem(key, JSON.stringify(reflections))
+    const storageKey = isDemo ? 'internhub_demo_reflections_data' : `internhub_reflections_${activeStudentId}`
+    localStorage.setItem(storageKey, JSON.stringify(reflections))
   }, [reflections, activeStudentId, isDemo])
 
   useEffect(() => {
-    const key = isDemo ? 'internhub_demo_tickets_data' : `internhub_tickets_${activeStudentId}`
-    localStorage.setItem(key, JSON.stringify(tickets))
+    const storageKey = isDemo ? 'internhub_demo_tickets_data' : `internhub_tickets_${activeStudentId}`
+    localStorage.setItem(storageKey, JSON.stringify(tickets))
   }, [tickets, activeStudentId, isDemo])
 
   useEffect(() => {
-    const key = isDemo ? 'internhub_demo_notifications_data' : `internhub_notifications_${activeStudentId}`
-    localStorage.setItem(key, JSON.stringify(notifications))
+    const storageKey = isDemo ? 'internhub_demo_notifications_data' : `internhub_notifications_${activeStudentId}`
+    localStorage.setItem(storageKey, JSON.stringify(notifications))
   }, [notifications, activeStudentId, isDemo])
 
   useEffect(() => {
-    const key = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
-    localStorage.setItem(key, JSON.stringify(persistedActivityTimestamps))
+    const storageKey = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
+    localStorage.setItem(storageKey, JSON.stringify(persistedActivityTimestamps))
   }, [persistedActivityTimestamps, activeStudentId, isDemo])
 
-  const unreadNotificationsCount = notifications.filter((n) => !n.isRead).length
+  const unreadNotificationsCount = notifications.filter((item) => !item.isRead).length
 
   const markNotificationAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+    setNotifications((prev) => prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)))
   }
 
   const markAllNotificationsAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+    setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })))
   }
 
   const clearNotifications = () => {
     setNotifications([])
   }
 
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((item) => item.id !== id))
+  }
+
   const showToast = (title: string, message: string, type: ToastMessage['type'] = 'success') => {
-    const id = generateToastId()
-    setToasts((prev) => [...prev, { id, title, message, type }])
+    const toastId = generateToastId()
+    setToasts((prev) => [...prev, { id: toastId, title, message, type }])
     setTimeout(() => {
-      dismissToast(id)
+      dismissToast(toastId)
     }, 4000)
   }
 
-  const dismissToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-  }
-
-  // Computed Values
-  const allTopics = course.modules.flatMap((m) => m.topics)
+  // Computed metrics
+  const allTopics = course.modules.flatMap((moduleItem) => moduleItem.topics)
   const totalTopicsCount = allTopics.length
-  const completedTopicsCount = allTopics.filter((t) => t.isCompleted).length
-  const curriculumProgressPercentage = totalTopicsCount > 0 ? Math.round((completedTopicsCount / totalTopicsCount) * 100) : 0
+  const completedTopicsCount = allTopics.filter((topicItem) => topicItem.isCompleted).length
+  const curriculumProgressPercentage =
+    totalTopicsCount > 0 ? Math.round((completedTopicsCount / totalTopicsCount) * 100) : 0
 
-  const activeProjectsCount = projects.filter((p) => p.status === 'In Progress' || p.status === 'Under Review').length
-  const approvedProjectsCount = projects.filter((p) => p.status === 'Approved').length
+  const activeProjectsCount = projects.filter((projectItem) => projectItem.status === 'In Progress' || projectItem.status === 'Under Review').length
+  const approvedProjectsCount = projects.filter((projectItem) => projectItem.status === 'Approved').length
 
   // Weighted overall progress: 60% curriculum + 40% approved projects
-  const projectProgressFraction = projects.length > 0 ? (approvedProjectsCount / projects.length) : 0
+  const projectProgressFraction = projects.length > 0 ? approvedProjectsCount / projects.length : 0
   const overallProgressPercentage = Math.round(
-    (curriculumProgressPercentage * 0.6) + (projectProgressFraction * 100 * 0.4)
+    curriculumProgressPercentage * 0.6 + projectProgressFraction * 100 * 0.4
   )
 
-  const averageRating = feedbackList.length > 0
-    ? Number((feedbackList.reduce((acc, f) => acc + f.overallRating, 0) / feedbackList.length).toFixed(1))
-    : 0
+  const averageRating =
+    feedbackList.length > 0
+      ? Number((feedbackList.reduce((acc, item) => acc + item.overallRating, 0) / feedbackList.length).toFixed(1))
+      : 0
 
   // Combine all persisted qualifying learning activity timestamps (topics, projects, weekly reflections)
   const allActivityTimestamps = useMemo(() => {
@@ -665,7 +687,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return Array.from(timestamps)
   }, [persistedActivityTimestamps, course, projects, reflections])
 
-  // Production-grade streak calculation using timezone awareness and consecutive day stepping
+  // Consecutive day streak calculation using timezone awareness
   const streakInfo = useMemo(() => {
     return calculateLearningStreak(allActivityTimestamps)
   }, [allActivityTimestamps])
@@ -673,8 +695,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const learningStreak = isDemo ? 14 : streakInfo.currentStreak
 
   // Topic Completion Toggle (Optimistic Update + Supabase Background Sync)
-  const toggleTopic = async (topicId: string): Promise<boolean> => {
-    const targetTopic = course.modules.flatMap((m) => m.topics).find((t) => t.id === topicId)
+  const toggleTopic = async (topicId: string, score?: number): Promise<boolean> => {
+    const targetTopic = course.modules.flatMap((mod) => mod.topics).find((top) => top.id === topicId)
     const willBeCompleted = targetTopic ? !targetTopic.isCompleted : false
     const nowIso = new Date().toISOString()
     startTopic(topicId)
@@ -687,6 +709,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ...top,
               isCompleted: willBeCompleted,
               completedAt: willBeCompleted ? nowIso : undefined,
+              quizScore: willBeCompleted ? (score ?? top.quizScore ?? 100) : undefined,
             }
           }
           return top
@@ -730,18 +753,12 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (willBeCompleted && targetTopic) {
-      setNotifications((prev) => [
-        {
-          id: `notif_${Date.now()}`,
-          title: 'Topic Completed',
-          message: `Completed "${targetTopic.title}". Curriculum progress updated!`,
-          type: 'curriculum',
-          timestamp: 'Just now',
-          isRead: false,
-          link: '/learning',
-        },
-        ...prev,
-      ])
+      pushNotification(
+        'Topic Completed',
+        `Completed "${targetTopic.title}". Curriculum progress updated!`,
+        'curriculum',
+        '/learning'
+      )
     }
 
     return true
@@ -749,10 +766,10 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Start Project (Transitions from Not Started to In Progress with Supabase Persistence)
   const startProject = async (projectId: string): Promise<boolean> => {
-    const targetProject = projects.find((p) => p.id === projectId)
+    const targetProject = projects.find((projectItem) => projectItem.id === projectId)
     if (!targetProject) return false
 
-    // Prevent duplicate start requests if already started or in flight
+    // Prevent duplicate start requests if already in progress or under review
     if (targetProject.status !== 'Not Started' && (targetProject.status as string) !== 'assigned') {
       return true
     }
@@ -801,36 +818,28 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // Persist update in state & activity timestamps
     setProjects((prev) =>
-      prev.map((proj) => {
-        if (proj.id === projectId) {
+      prev.map((projectItem) => {
+        if (projectItem.id === projectId) {
           return {
-            ...proj,
+            ...projectItem,
             status: 'In Progress',
             startedAt: nowIso,
           }
         }
-        return proj
+        return projectItem
       })
     )
 
     setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, nowIso])))
-
     showToast('Project Started', `"${targetProject.title}" is now In Progress!`, 'success')
 
-    setNotifications((prev) => [
-      {
-        id: `notif_${Date.now()}`,
-        title: 'Project Started',
-        message: `Started sprint for "${targetProject.title}". Status: In Progress.`,
-        type: 'project',
-        timestamp: 'Just now',
-        isRead: false,
-        link: '/projects',
-      },
-      ...prev,
-    ])
+    pushNotification(
+      'Project Started',
+      `Started sprint for "${targetProject.title}". Status: In Progress.`,
+      'project',
+      '/projects'
+    )
 
     return true
   }
@@ -842,11 +851,12 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const timestamp = getFormattedTimestamp()
     const nowIso = new Date().toISOString()
+
     setProjects((prev) =>
-      prev.map((proj) => {
-        if (proj.id === projectId) {
+      prev.map((projectItem) => {
+        if (projectItem.id === projectId) {
           return {
-            ...proj,
+            ...projectItem,
             status: 'Under Review',
             submission: {
               repoUrl: data.repoUrl,
@@ -857,7 +867,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             },
           }
         }
-        return proj
+        return projectItem
       })
     )
 
@@ -890,27 +900,21 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('Project Submitted', 'Your deliverables are now under mentor review.', 'success')
     }
 
-    const targetProject = projects.find((p) => p.id === projectId)
-    setNotifications((prev) => [
-      {
-        id: `notif_${Date.now()}`,
-        title: 'Deliverables Submitted',
-        message: `Submitted deliverables for "${targetProject?.title || 'Project'}". Status: Under Review.`,
-        type: 'project',
-        timestamp: 'Just now',
-        isRead: false,
-        link: '/projects',
-      },
-      ...prev,
-    ])
+    const targetProject = projects.find((projectItem) => projectItem.id === projectId)
+    pushNotification(
+      'Deliverables Submitted',
+      `Submitted deliverables for "${targetProject?.title || 'Project'}". Status: Under Review.`,
+      'project',
+      '/projects'
+    )
   }
 
   // Submit Weekly Reflection (Optimistic Update + Supabase Direct Insert)
   const submitWeeklyReflection = async (data: { whatWentWell: string; blockers: string; goalsForNextWeek: string }) => {
     const weekNum = reflections.length + 1
     const nowIso = new Date().toISOString()
-    const newRef: WeeklyReflection = {
-      id: 'ref_' + generateToastId(),
+    const newReflection: WeeklyReflection = {
+      id: `ref_${generateToastId()}`,
       weekNumber: weekNum,
       date: getFormattedDate(),
       createdAtIso: nowIso,
@@ -918,22 +922,17 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       blockers: data.blockers,
       goalsForNextWeek: data.goalsForNextWeek,
     }
-    setReflections((prev) => [newRef, ...prev])
+
+    setReflections((prev) => [newReflection, ...prev])
     setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, nowIso])))
     showToast('Reflection Saved', 'Your weekly retrospective has been recorded.', 'success')
 
-    setNotifications((prev) => [
-      {
-        id: `notif_${Date.now()}`,
-        title: 'Weekly Retrospective Recorded',
-        message: `Week ${weekNum} self-reflection has been saved.`,
-        type: 'feedback',
-        timestamp: 'Just now',
-        isRead: false,
-        link: '/feedback',
-      },
-      ...prev,
-    ])
+    pushNotification(
+      'Weekly Retrospective Recorded',
+      `Week ${weekNum} self-reflection has been saved.`,
+      'feedback',
+      '/feedback'
+    )
 
     if (isSupabaseConfigured && user && !isDemo) {
       try {
@@ -953,10 +952,10 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Create Support Ticket (Optimistic Update + Supabase Direct Insert)
   const createTicket = async (data: { subject: string; category: TicketCategory; priority: TicketPriority; description: string }) => {
-    const nextNum = 'TKT-' + (1000 + tickets.length + 1)
+    const ticketNum = `TKT-${1000 + tickets.length + 1}`
     const newTicket: SupportTicket = {
-      id: 'tkt_' + generateToastId(),
-      ticketNumber: nextNum,
+      id: `tkt_${generateToastId()}`,
+      ticketNumber: ticketNum,
       subject: data.subject,
       category: data.category,
       priority: data.priority,
@@ -964,27 +963,22 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: getFormattedTimestamp(),
       description: data.description,
     }
-    setTickets((prev) => [newTicket, ...prev])
-    showToast('Ticket Opened', `Ticket ${nextNum} has been created and assigned to support.`, 'info')
 
-    setNotifications((prev) => [
-      {
-        id: `notif_${Date.now()}`,
-        title: 'Support Ticket Logged',
-        message: `Ticket #${nextNum} (${data.category}) created and assigned.`,
-        type: 'support',
-        timestamp: 'Just now',
-        isRead: false,
-        link: '/support',
-      },
-      ...prev,
-    ])
+    setTickets((prev) => [newTicket, ...prev])
+    showToast('Ticket Opened', `Ticket ${ticketNum} has been created and assigned to support.`, 'info')
+
+    pushNotification(
+      'Support Ticket Logged',
+      `Ticket #${ticketNum} (${data.category}) created and assigned.`,
+      'support',
+      '/support'
+    )
 
     if (isSupabaseConfigured && user && !isDemo) {
       try {
         await supabase.from('support_tickets').insert({
           student_id: activeStudentId,
-          ticket_number: nextNum,
+          ticket_number: ticketNum,
           subject: data.subject,
           category: data.category,
           priority: data.priority,

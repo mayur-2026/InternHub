@@ -37,7 +37,7 @@ describe('Learning Section Redesign — Modern Course Cards & Catalog', () => {
     renderLearningPage()
 
     // Category and difficulty badges
-    expect(screen.getAllByText(/frontend engineering/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/^frontend$/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/intermediate/i).length).toBeGreaterThan(0)
 
     // Lesson counts from real data

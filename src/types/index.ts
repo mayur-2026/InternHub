@@ -42,6 +42,7 @@ export interface Topic {
   durationMinutes: number
   isCompleted: boolean
   completedAt?: string
+  quizScore?: number
   description: string
   keyTakeaways: string[]
   codeSnippet?: string

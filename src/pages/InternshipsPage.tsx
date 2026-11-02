@@ -45,7 +45,7 @@ export const InternshipsPage: React.FC = () => {
         }
       />
 
-      {/* Main Internship Program Card */}
+      {/* Main Internship Details Card */}
       <Card padding="lg" className="border-[#EDF0F6]">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-[#EDF0F6]">
           <div className="flex items-start gap-4">
@@ -74,7 +74,7 @@ export const InternshipsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 4 Metadata Ribbon Badges */}
+        {/* Metadata Badges */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 py-5 border-b border-[#EDF0F6]">
           <div className="p-3 rounded-[8px] bg-[#F5F7FC] border border-[#EDF0F6]">
             <span className="text-[11px] font-semibold text-[#8993A7] uppercase flex items-center gap-1">
@@ -112,7 +112,7 @@ export const InternshipsPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* Mentor and Milestones Grid */}
+      {/* Mentor and Roadmap Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Mentor Card */}
         <Card padding="md" className="lg:col-span-1">
@@ -158,7 +158,7 @@ export const InternshipsPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Program Roadmap & Milestones */}
+        {/* Milestone Roadmap */}
         <Card padding="md" className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle>Internship Milestone Roadmap</CardTitle>
@@ -171,10 +171,10 @@ export const InternshipsPage: React.FC = () => {
 
             <div className="space-y-3 pt-2">
               {course.modules.map((mod) => {
-                const modTotal = mod.topics.length
-                const modDone = mod.topics.filter((t) => t.isCompleted).length
-                const isComplete = modTotal > 0 && modDone === modTotal
-                const activeWeekNum = course.modules.find((m) => m.topics.some((t) => !t.isCompleted))?.weekNumber || 1
+                const totalTopics = mod.topics.length
+                const completedTopics = mod.topics.filter((topic) => topic.isCompleted).length
+                const isComplete = totalTopics > 0 && completedTopics === totalTopics
+                const activeWeekNum = course.modules.find((m) => m.topics.some((topic) => !topic.isCompleted))?.weekNumber || 1
                 const isActive = !isComplete && mod.weekNumber === activeWeekNum
 
                 return (
@@ -219,7 +219,7 @@ export const InternshipsPage: React.FC = () => {
                         )}
                       </div>
                       <p className="text-[12px] text-[#64748B] mt-0.5">
-                        {mod.description} • {modDone}/{modTotal} Topics Completed
+                        {mod.description} • {completedTopics}/{totalTopics} Topics Completed
                       </p>
                     </div>
                   </div>
@@ -239,7 +239,6 @@ export const InternshipsPage: React.FC = () => {
         maxWidth="lg"
       >
         <div className="space-y-6">
-          {/* Certificate Graphical Layout */}
           <div className="p-6 sm:p-8 rounded-[12px] border-4 border-double border-[#7950F2]/40 bg-white text-center relative overflow-hidden shadow-inner">
             <div className="w-16 h-16 mx-auto rounded-full bg-[#F3F0FF] text-[#7950F2] flex items-center justify-center mb-4">
               <Award className="w-8 h-8" />

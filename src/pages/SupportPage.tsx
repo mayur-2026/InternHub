@@ -20,6 +20,30 @@ import {
   LifeBuoy,
 } from 'lucide-react'
 
+function renderPriorityBadge(priority: TicketPriority) {
+  switch (priority) {
+    case 'Urgent':
+      return <StatusBadge variant="error">Urgent</StatusBadge>
+    case 'High':
+      return <StatusBadge variant="warning">High</StatusBadge>
+    case 'Medium':
+      return <StatusBadge variant="info">Medium</StatusBadge>
+    default:
+      return <StatusBadge variant="primary">Low</StatusBadge>
+  }
+}
+
+function renderTicketStatusBadge(status: string) {
+  switch (status) {
+    case 'Resolved':
+      return <StatusBadge variant="success">Resolved</StatusBadge>
+    case 'In Progress':
+      return <StatusBadge variant="warning">In Progress</StatusBadge>
+    default:
+      return <StatusBadge variant="info">Open</StatusBadge>
+  }
+}
+
 export const SupportPage: React.FC = () => {
   const { tickets, faqs, createTicket, showToast } = useApp()
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
@@ -32,7 +56,6 @@ export const SupportPage: React.FC = () => {
   const [priority, setPriority] = useState<TicketPriority>('Medium')
   const [description, setDescription] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
-
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleOpenTicketModal = () => {
@@ -79,30 +102,6 @@ export const SupportPage: React.FC = () => {
       faq.category.toLowerCase().includes(faqSearch.toLowerCase())
   )
 
-  const getPriorityBadge = (priority: TicketPriority) => {
-    switch (priority) {
-      case 'Urgent':
-        return <StatusBadge variant="error">Urgent</StatusBadge>
-      case 'High':
-        return <StatusBadge variant="warning">High</StatusBadge>
-      case 'Medium':
-        return <StatusBadge variant="info">Medium</StatusBadge>
-      default:
-        return <StatusBadge variant="primary">Low</StatusBadge>
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Resolved':
-        return <StatusBadge variant="success">Resolved</StatusBadge>
-      case 'In Progress':
-        return <StatusBadge variant="warning">In Progress</StatusBadge>
-      default:
-        return <StatusBadge variant="info">Open</StatusBadge>
-    }
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -110,7 +109,7 @@ export const SupportPage: React.FC = () => {
         subtitle="Submit technical support tickets, find answers in our knowledge base, and escalate blockers."
         badge={
           <StatusBadge variant="info" icon={<LifeBuoy className="w-3.5 h-3.5" />}>
-            {tickets.filter((t) => t.status !== 'Resolved').length} Active Tickets
+            {tickets.filter((ticket) => ticket.status !== 'Resolved').length} Active Tickets
           </StatusBadge>
         }
         action={
@@ -125,9 +124,9 @@ export const SupportPage: React.FC = () => {
         }
       />
 
-      {/* Two-Column Layout: Tickets List vs FAQ & Escalation */}
+      {/* Main Support Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Left Column: Tickets Desk (2 cols) */}
+        {/* Support Tickets Column */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-[16px] font-bold text-[#25324B]">Your Support Inquiries</h3>
@@ -162,8 +161,8 @@ export const SupportPage: React.FC = () => {
                       <span className="text-[12px] text-[#64748B] font-medium">• {ticket.category}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {getPriorityBadge(ticket.priority)}
-                      {getStatusBadge(ticket.status)}
+                      {renderPriorityBadge(ticket.priority)}
+                      {renderTicketStatusBadge(ticket.status)}
                     </div>
                   </div>
 
@@ -191,9 +190,8 @@ export const SupportPage: React.FC = () => {
           )}
         </div>
 
-        {/* Right Column: FAQ Accordion & Quick Escalation (1 col) */}
+        {/* FAQ Accordion and Escalation Column */}
         <div className="space-y-6">
-          {/* Quick Contact & Escalation */}
           <Card padding="md" className="hero-gradient border-[#7950F2]/15">
             <h4 className="text-[14px] font-bold text-[#25324B] flex items-center gap-1.5">
               <HelpCircle className="w-4 h-4 text-[#7950F2]" /> Need Urgent Help?
@@ -213,7 +211,6 @@ export const SupportPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Searchable FAQ Accordion */}
           <Card padding="md">
             <CardHeader className="pb-3">
               <CardTitle>Frequently Asked Questions</CardTitle>

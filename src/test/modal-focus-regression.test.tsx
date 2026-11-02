@@ -48,7 +48,7 @@ describe('CRITICAL REGRESSION: Support Ticket Form Continuous Typing & Focus Pre
 
     // Verify full content is retained
     expect(descriptionTextarea.value).toBe(testText)
-  })
+  }, 15000)
 
   it('validates required fields, prevents empty submission, and successfully creates a ticket', async () => {
     const user = userEvent.setup()

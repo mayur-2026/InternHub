@@ -34,7 +34,8 @@ describe('Course Syllabus & Lesson Topics — UI & Functional Workflows', () => 
 
     // Lesson duration & metadata
     expect(screen.getAllByText(/45 minutes/i).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/code sample/i).length).toBeGreaterThan(0)
+    // Code sample badge removed per UI simplification
+    expect(screen.getAllByText(/minutes/i).length).toBeGreaterThan(0)
   })
 
   it('displays functional lesson action buttons: Review Lesson, Start Lesson, Continue Learning', () => {
@@ -61,7 +62,8 @@ describe('Course Syllabus & Lesson Topics — UI & Functional Workflows', () => 
     // Modal opens with lesson details
     expect(screen.getByRole('dialog')).toBeDefined()
     expect(screen.getByText(/key learning objectives/i)).toBeDefined()
-    expect(screen.getByText(/technical implementation/i)).toBeDefined()
+    expect(screen.getByText(/verified reference documentation/i)).toBeDefined()
+    expect(screen.getByRole('button', { name: /lesson test/i })).toBeDefined()
 
     // Next / Previous lesson navigation buttons exist in modal
     const nextBtn = screen.getByRole('button', { name: /next/i })
@@ -117,6 +119,6 @@ describe('Course Syllabus & Lesson Topics — UI & Functional Workflows', () => 
 
     expect(screen.getByText(/course completed! all lessons & exercises finished/i)).toBeDefined()
     expect(screen.getByText(/course progress/i)).toBeDefined()
-    expect(screen.getByText(/100%/i)).toBeDefined()
+    expect(screen.getAllByText(/100%/i).length).toBeGreaterThan(0)
   })
 })

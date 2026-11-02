@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Menu,
@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useApp } from '../../context/AppContext'
+import type { NotificationType } from '../../types'
 
 export interface HeaderProps {
   onOpenMobileNav: () => void
@@ -35,6 +36,37 @@ interface SearchItem {
   keywords?: string[]
   to: string
   icon: React.ReactNode
+}
+
+function getNotificationVisual(type: NotificationType) {
+  switch (type) {
+    case 'project':
+      return {
+        icon: <FolderGit2 className="w-4 h-4 text-[#F06595]" />,
+        containerClass: 'bg-[#FFF0F6] border-[#F06595]/20',
+      }
+    case 'curriculum':
+      return {
+        icon: <GraduationCap className="w-4 h-4 text-[#7950F2]" />,
+        containerClass: 'bg-[#F3F0FF] border-[#7950F2]/20',
+      }
+    case 'support':
+      return {
+        icon: <HelpCircle className="w-4 h-4 text-[#4DABF7]" />,
+        containerClass: 'bg-[#E7F5FF] border-[#4DABF7]/20',
+      }
+    case 'feedback':
+      return {
+        icon: <MessageSquare className="w-4 h-4 text-[#20C997]" />,
+        containerClass: 'bg-[#E6FCF5] border-[#20C997]/20',
+      }
+    case 'system':
+    default:
+      return {
+        icon: <Sparkles className="w-4 h-4 text-[#7950F2]" />,
+        containerClass: 'bg-[#F3F0FF] border-[#7950F2]/20',
+      }
+  }
 }
 
 export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
@@ -60,132 +92,125 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
   const notificationsContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Build searchable index from sections, projects, and curriculum topics
-  const allSearchItems: SearchItem[] = [
-    // 8 Core Navigation Sections
-    {
-      id: 'nav-dashboard',
-      title: 'Dashboard',
-      subtitle: 'Overview, KPI stats & recent milestones',
-      category: 'Sections',
-      keywords: ['overview', 'stats', 'kpi', 'metrics', 'home', 'summary'],
-      to: '/dashboard',
-      icon: <LayoutDashboard className="w-4 h-4 text-[#7950F2]" />,
-    },
-    {
-      id: 'nav-internships',
-      title: 'My Internships',
-      subtitle: `${internship.company} • ${internship.role}`,
-      category: 'Sections',
-      keywords: ['role', 'company', 'organization', 'dates', 'supervisor', 'fellowship', 'work'],
-      to: '/internships',
-      icon: <Briefcase className="w-4 h-4 text-[#7950F2]" />,
-    },
-    {
-      id: 'nav-learning',
-      title: 'Learning Curriculum',
-      subtitle: 'Technical modules, courses & lessons',
-      category: 'Sections',
-      keywords: ['course', 'modules', 'lessons', 'curriculum', 'study', 'education', 'topics'],
-      to: '/learning',
-      icon: <GraduationCap className="w-4 h-4 text-[#7950F2]" />,
-    },
-    {
-      id: 'nav-projects',
-      title: 'Assigned Projects',
-      subtitle: 'Engineering deliverables & submission portal',
-      category: 'Sections',
-      keywords: ['deliverables', 'sprint', 'code', 'github', 'repository', 'tasks', 'submissions'],
-      to: '/projects',
-      icon: <FolderGit2 className="w-4 h-4 text-[#F06595]" />,
-    },
-    {
-      id: 'nav-progress',
-      title: 'Progress & Analytics',
-      subtitle: 'Overall fellowship completion & competencies',
-      category: 'Sections',
-      keywords: ['analytics', 'charts', 'completion', 'grades', 'attendance', 'metrics'],
-      to: '/progress',
-      icon: <TrendingUp className="w-4 h-4 text-[#FFB347]" />,
-    },
-    {
-      id: 'nav-feedback',
-      title: 'Mentor Feedback & Reviews',
-      subtitle: 'Rubric evaluations & weekly retrospectives',
-      category: 'Sections',
-      keywords: ['reviews', 'mentors', 'retrospective', 'evaluations', 'rubric', 'ratings'],
-      to: '/feedback',
-      icon: <MessageSquare className="w-4 h-4 text-[#20C997]" />,
-    },
-    {
-      id: 'nav-support',
-      title: 'Support & Help Desk',
-      subtitle: 'Submit tickets & searchable FAQ answers',
-      category: 'Sections',
-      keywords: ['help', 'tickets', 'faq', 'issues', 'assistance', 'bugs', 'questions'],
-      to: '/support',
-      icon: <HelpCircle className="w-4 h-4 text-[#4DABF7]" />,
-    },
-    {
-      id: 'nav-profile',
-      title: 'Profile & Settings',
-      subtitle: 'Google identity, education & social links',
-      category: 'Sections',
-      keywords: ['account', 'settings', 'email', 'avatar', 'user', 'google', 'logout'],
-      to: '/profile',
-      icon: <User className="w-4 h-4 text-[#7950F2]" />,
-    },
-
-    // Projects
-    ...projects.map((proj) => ({
-      id: `proj-${proj.id}`,
-      title: proj.title,
-      subtitle: `${proj.difficulty} • Due ${proj.dueDate} • Status: ${proj.status}`,
-      category: 'Projects' as const,
-      keywords: ['project', proj.difficulty.toLowerCase(), proj.status.toLowerCase(), 'submission'],
-      to: '/projects',
-      icon: <FolderGit2 className="w-4 h-4 text-[#F06595]" />,
-    })),
-
-    // Curriculum Topics
-    ...course.modules.flatMap((mod) =>
-      mod.topics.map((topic) => ({
-        id: `topic-${topic.id}`,
-        title: topic.title,
-        subtitle: `Week ${mod.weekNumber}: ${mod.title} (${topic.durationMinutes} mins)`,
-        category: 'Topics' as const,
-        keywords: ['lesson', 'topic', `week ${mod.weekNumber}`, mod.title.toLowerCase()],
+  // Memoize search items index across navigation sections, projects, and curriculum topics
+  const allSearchItems: SearchItem[] = useMemo(() => {
+    return [
+      {
+        id: 'nav-dashboard',
+        title: 'Dashboard',
+        subtitle: 'Overview, KPI stats & recent milestones',
+        category: 'Sections',
+        keywords: ['overview', 'stats', 'kpi', 'metrics', 'home', 'summary'],
+        to: '/dashboard',
+        icon: <LayoutDashboard className="w-4 h-4 text-[#7950F2]" />,
+      },
+      {
+        id: 'nav-internships',
+        title: 'My Internships',
+        subtitle: `${internship.company} • ${internship.role}`,
+        category: 'Sections',
+        keywords: ['role', 'company', 'organization', 'dates', 'supervisor', 'fellowship', 'work'],
+        to: '/internships',
+        icon: <Briefcase className="w-4 h-4 text-[#7950F2]" />,
+      },
+      {
+        id: 'nav-learning',
+        title: 'Learning Curriculum',
+        subtitle: 'Technical modules, courses & lessons',
+        category: 'Sections',
+        keywords: ['course', 'modules', 'lessons', 'curriculum', 'study', 'education', 'topics'],
         to: '/learning',
-        icon: <BookOpen className="w-4 h-4 text-[#20C997]" />,
-      }))
-    ),
-  ]
+        icon: <GraduationCap className="w-4 h-4 text-[#7950F2]" />,
+      },
+      {
+        id: 'nav-projects',
+        title: 'Assigned Projects',
+        subtitle: 'Engineering deliverables & submission portal',
+        category: 'Sections',
+        keywords: ['deliverables', 'sprint', 'code', 'github', 'repository', 'tasks', 'submissions'],
+        to: '/projects',
+        icon: <FolderGit2 className="w-4 h-4 text-[#F06595]" />,
+      },
+      {
+        id: 'nav-progress',
+        title: 'Progress & Analytics',
+        subtitle: 'Overall fellowship completion & competencies',
+        category: 'Sections',
+        keywords: ['analytics', 'charts', 'completion', 'grades', 'attendance', 'metrics'],
+        to: '/progress',
+        icon: <TrendingUp className="w-4 h-4 text-[#FFB347]" />,
+      },
+      {
+        id: 'nav-feedback',
+        title: 'Mentor Feedback & Reviews',
+        subtitle: 'Rubric evaluations & weekly retrospectives',
+        category: 'Sections',
+        keywords: ['reviews', 'mentors', 'retrospective', 'evaluations', 'rubric', 'ratings'],
+        to: '/feedback',
+        icon: <MessageSquare className="w-4 h-4 text-[#20C997]" />,
+      },
+      {
+        id: 'nav-support',
+        title: 'Support & Help Desk',
+        subtitle: 'Submit tickets & searchable FAQ answers',
+        category: 'Sections',
+        keywords: ['help', 'tickets', 'faq', 'issues', 'assistance', 'bugs', 'questions'],
+        to: '/support',
+        icon: <HelpCircle className="w-4 h-4 text-[#4DABF7]" />,
+      },
+      {
+        id: 'nav-profile',
+        title: 'Profile & Settings',
+        subtitle: 'Google identity, education & social links',
+        category: 'Sections',
+        keywords: ['account', 'settings', 'email', 'avatar', 'user', 'google', 'logout'],
+        to: '/profile',
+        icon: <User className="w-4 h-4 text-[#7950F2]" />,
+      },
+      ...projects.map((proj) => ({
+        id: `proj-${proj.id}`,
+        title: proj.title,
+        subtitle: `${proj.difficulty} • Due ${proj.dueDate} • Status: ${proj.status}`,
+        category: 'Projects' as const,
+        keywords: ['project', proj.difficulty.toLowerCase(), proj.status.toLowerCase(), 'submission'],
+        to: '/projects',
+        icon: <FolderGit2 className="w-4 h-4 text-[#F06595]" />,
+      })),
+      ...course.modules.flatMap((mod) =>
+        mod.topics.map((topic) => ({
+          id: `topic-${topic.id}`,
+          title: topic.title,
+          subtitle: `Week ${mod.weekNumber}: ${mod.title} (${topic.durationMinutes} mins)`,
+          category: 'Topics' as const,
+          keywords: ['lesson', 'topic', `week ${mod.weekNumber}`, mod.title.toLowerCase()],
+          to: '/learning',
+          icon: <BookOpen className="w-4 h-4 text-[#20C997]" />,
+        }))
+      ),
+    ]
+  }, [internship.company, internship.role, projects, course.modules])
 
-  // Filter matching items
   const trimmedQuery = query.trim().toLowerCase()
-  const matchingResults = trimmedQuery
-    ? allSearchItems.filter(
-        (item) =>
-          item.title.toLowerCase().includes(trimmedQuery) ||
-          item.subtitle.toLowerCase().includes(trimmedQuery) ||
-          item.category.toLowerCase().includes(trimmedQuery) ||
-          (item.keywords && item.keywords.some((k) => k.toLowerCase().includes(trimmedQuery)))
-      )
-    : []
 
-  // Handle clicking outside to close search and notification dropdowns
+  const matchingResults = useMemo(() => {
+    if (!trimmedQuery) return []
+    return allSearchItems.filter(
+      (item) =>
+        item.title.toLowerCase().includes(trimmedQuery) ||
+        item.subtitle.toLowerCase().includes(trimmedQuery) ||
+        item.category.toLowerCase().includes(trimmedQuery) ||
+        (item.keywords && item.keywords.some((keyword) => keyword.toLowerCase().includes(trimmedQuery)))
+    )
+  }, [allSearchItems, trimmedQuery])
+
+  // Handle clicking outside search and notification dropdowns
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        searchContainerRef.current &&
-        !searchContainerRef.current.contains(e.target as Node)
-      ) {
+      const targetNode = e.target as Node
+      if (searchContainerRef.current && !searchContainerRef.current.contains(targetNode)) {
         setIsOpen(false)
       }
-      if (
-        notificationsContainerRef.current &&
-        !notificationsContainerRef.current.contains(e.target as Node)
-      ) {
+      if (notificationsContainerRef.current && !notificationsContainerRef.current.contains(targetNode)) {
         setIsNotificationsOpen(false)
       }
     }
@@ -206,8 +231,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
   }, [])
 
-  const handleSelectResult = (to: string) => {
-    navigate(to)
+  const handleSelectResult = (targetPath: string) => {
+    navigate(targetPath)
     setQuery('')
     setIsOpen(false)
   }
@@ -236,7 +261,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
 
   return (
     <header className="h-[64px] min-h-[64px] bg-white border-b border-[#EDF0F6] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
-      {/* Left: Mobile Menu Trigger & Interactive Search */}
+      {/* Search and Navigation */}
       <div className="flex items-center gap-3 sm:gap-4 flex-1 max-w-lg">
         <button
           onClick={onOpenMobileNav}
@@ -246,7 +271,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* Global Search Field with Interactive Dropdown */}
         <div ref={searchContainerRef} className="relative w-full">
           <div className="relative flex items-center">
             <Search className="w-4 h-4 text-[#8993A7] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -290,7 +314,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
             </div>
           </div>
 
-          {/* Search Results Dropdown Panel */}
           {isOpen && trimmedQuery && (
             <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-[#EDF0F6] rounded-[12px] shadow-xl overflow-hidden z-50 max-h-[420px] flex flex-col animate-in fade-in zoom-in-98 duration-100">
               <div className="px-3.5 py-2 border-b border-[#EDF0F6] bg-[#F8FAFF] flex items-center justify-between text-[11px] text-[#8993A7] font-semibold uppercase tracking-wider">
@@ -323,31 +346,35 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className={`text-[13px] font-semibold transition-colors truncate ${
-                            idx === selectedIndex ? 'text-[#7950F2]' : 'text-[#25324B] group-hover:text-[#7950F2]'
-                          }`}>
+                          <p
+                            className={`text-[13px] font-semibold transition-colors truncate ${
+                              idx === selectedIndex ? 'text-[#7950F2]' : 'text-[#25324B] group-hover:text-[#7950F2]'
+                            }`}
+                          >
                             {result.title}
                           </p>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 border ${
-                            result.category === 'Sections'
-                              ? 'bg-[#F3F0FF] text-[#7950F2] border-[#7950F2]/20'
-                              : result.category === 'Projects'
-                              ? 'bg-[#FFF0F6] text-[#F06595] border-[#F06595]/20'
-                              : 'bg-[#E6FCF5] text-[#0CA678] border-[#20C997]/20'
-                          }`}>
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 border ${
+                              result.category === 'Sections'
+                                ? 'bg-[#F3F0FF] text-[#7950F2] border-[#7950F2]/20'
+                                : result.category === 'Projects'
+                                ? 'bg-[#FFF0F6] text-[#F06595] border-[#F06595]/20'
+                                : 'bg-[#E6FCF5] text-[#0CA678] border-[#20C997]/20'
+                            }`}
+                          >
                             {result.category}
                           </span>
                         </div>
-                        <p className="text-[11px] text-[#64748B] truncate mt-0.5">
-                          {result.subtitle}
-                        </p>
+                        <p className="text-[11px] text-[#64748B] truncate mt-0.5">{result.subtitle}</p>
                       </div>
 
-                      <ArrowRight className={`w-3.5 h-3.5 text-[#7950F2] shrink-0 self-center transition-all ${
-                        idx === selectedIndex
-                          ? 'opacity-100 translate-x-0'
-                          : 'opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0'
-                      }`} />
+                      <ArrowRight
+                        className={`w-3.5 h-3.5 text-[#7950F2] shrink-0 self-center transition-all ${
+                          idx === selectedIndex
+                            ? 'opacity-100 translate-x-0'
+                            : 'opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0'
+                        }`}
+                      />
                     </button>
                   ))
                 )}
@@ -357,15 +384,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
         </div>
       </div>
 
-      {/* Right: Active Cohort Badge, Notifications, User Avatar */}
+      {/* Cohort Badge, Notifications, User Avatar */}
       <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
-        {/* Active Track Badge */}
         <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F3F0FF] text-[#7950F2] text-[12px] font-semibold">
           <Sparkles className="w-3.5 h-3.5" />
           <span>{internship.cohort}</span>
         </div>
 
-        {/* Notifications Icon Button & Interactive Dropdown */}
         <div ref={notificationsContainerRef} className="relative">
           <button
             onClick={() => setIsNotificationsOpen((prev) => !prev)}
@@ -386,10 +411,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
             )}
           </button>
 
-          {/* Notifications Dropdown Panel */}
           {isNotificationsOpen && (
             <div className="absolute right-0 top-full mt-2 w-[340px] sm:w-[380px] bg-white border border-[#EDF0F6] rounded-[12px] shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-98 duration-150">
-              {/* Header */}
               <div className="px-4 py-3 border-b border-[#EDF0F6] bg-[#F8FAFF] flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[14px] font-bold text-[#25324B]">Notifications</h3>
@@ -423,7 +446,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
                 </div>
               </div>
 
-              {/* Notification List */}
               <div className="max-h-[360px] overflow-y-auto divide-y divide-[#EDF0F6]/60">
                 {notifications.length === 0 ? (
                   <div className="p-8 text-center text-[#64748B]">
@@ -436,63 +458,44 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
                     </p>
                   </div>
                 ) : (
-                  notifications.map((n) => {
-                    const iconMap = {
-                      project: <FolderGit2 className="w-4 h-4 text-[#F06595]" />,
-                      curriculum: <GraduationCap className="w-4 h-4 text-[#7950F2]" />,
-                      support: <HelpCircle className="w-4 h-4 text-[#4DABF7]" />,
-                      feedback: <MessageSquare className="w-4 h-4 text-[#20C997]" />,
-                      system: <Sparkles className="w-4 h-4 text-[#7950F2]" />,
-                    }
-
-                    const bgMap = {
-                      project: 'bg-[#FFF0F6] border-[#F06595]/20',
-                      curriculum: 'bg-[#F3F0FF] border-[#7950F2]/20',
-                      support: 'bg-[#E7F5FF] border-[#4DABF7]/20',
-                      feedback: 'bg-[#E6FCF5] border-[#20C997]/20',
-                      system: 'bg-[#F3F0FF] border-[#7950F2]/20',
-                    }
-
+                  notifications.map((notification) => {
+                    const visual = getNotificationVisual(notification.type)
                     return (
                       <div
-                        key={n.id}
+                        key={notification.id}
                         onClick={() => {
-                          markNotificationAsRead(n.id)
+                          markNotificationAsRead(notification.id)
                           setIsNotificationsOpen(false)
-                          if (n.link) navigate(n.link)
+                          if (notification.link) navigate(notification.link)
                         }}
                         className={`p-3.5 flex items-start gap-3 transition-colors cursor-pointer group ${
-                          !n.isRead ? 'bg-[#F8FAFF] hover:bg-[#F3F0FF]/40' : 'bg-white hover:bg-[#F5F7FC]'
+                          !notification.isRead ? 'bg-[#F8FAFF] hover:bg-[#F3F0FF]/40' : 'bg-white hover:bg-[#F5F7FC]'
                         }`}
                       >
-                        <div
-                          className={`p-2 rounded-[8px] border shrink-0 mt-0.5 ${
-                            bgMap[n.type] || 'bg-[#F5F7FC] border-[#EDF0F6]'
-                          }`}
-                        >
-                          {iconMap[n.type] || <Bell className="w-4 h-4 text-[#7950F2]" />}
+                        <div className={`p-2 rounded-[8px] border shrink-0 mt-0.5 ${visual.containerClass}`}>
+                          {visual.icon}
                         </div>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
                             <p
                               className={`text-[13px] leading-tight transition-colors ${
-                                !n.isRead
+                                !notification.isRead
                                   ? 'font-bold text-[#25324B] group-hover:text-[#7950F2]'
                                   : 'font-semibold text-[#64748B]'
                               }`}
                             >
-                              {n.title}
+                              {notification.title}
                             </p>
-                            {!n.isRead && (
+                            {!notification.isRead && (
                               <span className="w-2 h-2 rounded-full bg-[#7950F2] shrink-0" />
                             )}
                           </div>
                           <p className="text-[12px] text-[#64748B] mt-1 leading-[18px]">
-                            {n.message}
+                            {notification.message}
                           </p>
                           <span className="text-[10px] text-[#8993A7] mt-1.5 inline-block font-medium">
-                            {n.timestamp}
+                            {notification.timestamp}
                           </span>
                         </div>
                       </div>
@@ -501,7 +504,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
                 )}
               </div>
 
-              {/* Footer */}
               {notifications.length > 0 && (
                 <div className="p-2 border-t border-[#EDF0F6] bg-[#F8FAFF] text-center">
                   <button
@@ -512,7 +514,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
                     className="text-[12px] text-[#7950F2] hover:text-[#6741D9] font-medium py-1 px-2 rounded hover:bg-[#EDE9FF] transition-colors cursor-pointer inline-flex items-center gap-1"
                   >
                     <span>View all recent activity</span>
-                    <ArrowRight className="w-3 h-3" />
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               )}
@@ -520,7 +522,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileNav }) => {
           )}
         </div>
 
-        {/* User Avatar with Link to Profile */}
         {user && (
           <Link
             to="/profile"
