@@ -28,8 +28,10 @@ import {
 import { useAuth } from './AuthContext'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { calculateLearningStreak } from '../utils/streak'
+import { formatDate, formatTimestamp } from '../utils/formatters'
+import { loadStoredItem, saveStoredItem } from '../utils/storage'
 
-interface ToastMessage {
+export interface ToastMessage {
   id: string
   title: string
   message: string
@@ -48,7 +50,7 @@ interface AppContextType {
   notifications: AppNotification[]
   unreadNotificationsCount: number
 
-  // Analytics & Computed Properties
+  // Analytics & Computed Metrics
   totalTopicsCount: number
   completedTopicsCount: number
   curriculumProgressPercentage: number
@@ -82,19 +84,95 @@ function generateToastId(): string {
   return `toast_${toastCounter}`
 }
 
-function getFormattedTimestamp(): string {
-  const now = new Date()
-  const datePart = now.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-  const timePart = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  return `${datePart} • ${timePart}`
+const INITIAL_NOTIFICATIONS: AppNotification[] = [
+  {
+    id: 'notif_welcome',
+    title: 'Welcome to InternHub',
+    message: 'Your internship workspace is active. Explore your curriculum and project milestones.',
+    type: 'system',
+    timestamp: 'Today',
+    isRead: false,
+    link: '/dashboard',
+  },
+  {
+    id: 'notif_milestone',
+    title: 'Upcoming Milestone Sprint',
+    message: 'Review deliverables for InternHub Dashboard and setup your repository.',
+    type: 'project',
+    timestamp: 'Yesterday',
+    isRead: false,
+    link: '/projects',
+  },
+]
+
+// Database mapping helpers
+interface RemoteTicketRow {
+  id: string
+  ticket_number: string
+  subject: string
+  category: string
+  priority: string
+  status?: string
+  created_at: string
+  description: string
+  last_reply?: string
 }
 
-function getFormattedDate(): string {
-  return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+interface RemoteReflectionRow {
+  id: string
+  week_number: number
+  created_at: string
+  what_went_well: string
+  blockers?: string
+  goals_for_next_week: string
+}
+
+interface RemoteSubmissionRow {
+  id?: string
+  project_id: string
+  student_id?: string
+  status: string
+  repo_url?: string
+  demo_url?: string
+  notes?: string
+  submitted_at: string
+  started_at?: string
+  grade?: number
+  mentor_feedback?: string
+}
+
+function mapRemoteTicket(row: RemoteTicketRow): SupportTicket {
+  return {
+    id: row.id,
+    ticketNumber: row.ticket_number,
+    subject: row.subject,
+    category: row.category as TicketCategory,
+    priority: row.priority as TicketPriority,
+    status: (row.status as SupportTicket['status']) || 'Open',
+    createdAt: formatDate(row.created_at),
+    description: row.description,
+    lastReply: row.last_reply || undefined,
+  }
+}
+
+function mapRemoteReflection(row: RemoteReflectionRow): WeeklyReflection {
+  return {
+    id: row.id,
+    weekNumber: row.week_number,
+    date: formatDate(row.created_at),
+    createdAtIso: row.created_at,
+    whatWentWell: row.what_went_well,
+    blockers: row.blockers || '',
+    goalsForNextWeek: row.goals_for_next_week,
+  }
+}
+
+function parseStartedTimestamp(row: { started_at?: string; notes?: string }): string | undefined {
+  if (row.started_at) return row.started_at
+  if (row.notes?.startsWith('started_at:')) {
+    return row.notes.replace('started_at:', '')
+  }
+  return undefined
 }
 
 const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -103,125 +181,56 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [internship] = useState<InternshipInfo>(INITIAL_INTERNSHIP)
 
+  // Course curriculum state with local storage fallback
   const [course, setCourse] = useState<Course>(() => {
-    const storageKey = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return isDemo ? DEMO_COURSE : CATALOG_COURSE
-      }
-    }
-    return isDemo ? DEMO_COURSE : CATALOG_COURSE
+    const key = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
+    return loadStoredItem(key, isDemo ? DEMO_COURSE : CATALOG_COURSE)
   })
 
+  // Projects state with local storage fallback
   const [projects, setProjects] = useState<Project[]>(() => {
-    const storageKey = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return isDemo ? DEMO_PROJECTS : CATALOG_PROJECTS
-      }
-    }
-    return isDemo ? DEMO_PROJECTS : CATALOG_PROJECTS
+    const key = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
+    return loadStoredItem(key, isDemo ? DEMO_PROJECTS : CATALOG_PROJECTS)
   })
 
+  // Feedback evaluations list
   const [feedbackList, setFeedbackList] = useState<FeedbackEvaluation[]>(() => {
-    if (isDemo) return DEMO_FEEDBACK
-    return []
+    return isDemo ? DEMO_FEEDBACK : []
   })
 
+  // Weekly reflections
   const [reflections, setReflections] = useState<WeeklyReflection[]>(() => {
     if (isDemo) return DEMO_REFLECTIONS
-    const storageKey = `internhub_reflections_${activeStudentId}`
-    const saved = localStorage.getItem(storageKey)
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return []
-      }
-    }
-    return []
+    const key = `internhub_reflections_${activeStudentId}`
+    return loadStoredItem(key, [])
   })
 
+  // Support tickets
   const [tickets, setTickets] = useState<SupportTicket[]>(() => {
     if (isDemo) return DEMO_TICKETS
-    const storageKey = `internhub_tickets_${activeStudentId}`
-    const saved = localStorage.getItem(storageKey)
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return []
-      }
-    }
-    return []
+    const key = `internhub_tickets_${activeStudentId}`
+    return loadStoredItem(key, [])
   })
 
   const [faqs] = useState<FAQItem[]>(INITIAL_FAQS)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+
+  // Notifications
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const storageKey = `internhub_notifications_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        // Fall back to initial welcome notification
-      }
-    }
-    return [
-      {
-        id: 'notif_welcome',
-        title: 'Welcome to InternHub',
-        message: 'Your internship workspace is active. Explore your curriculum and project milestones.',
-        type: 'system',
-        timestamp: 'Today',
-        isRead: false,
-        link: '/dashboard',
-      },
-      {
-        id: 'notif_milestone',
-        title: 'Upcoming Milestone Sprint',
-        message: 'Review deliverables for InternHub Dashboard and setup your repository.',
-        type: 'project',
-        timestamp: 'Yesterday',
-        isRead: false,
-        link: '/projects',
-      },
-    ]
+    const key = `internhub_notifications_${activeStudentId}`
+    return loadStoredItem(key, INITIAL_NOTIFICATIONS)
   })
 
-  // Persisted daily activity timestamps for consistent, timezone-aware streak tracking
+  // Persisted daily activity timestamps for timezone-aware streak tracking
   const [persistedActivityTimestamps, setPersistedActivityTimestamps] = useState<string[]>(() => {
-    const storageKey = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return []
-      }
-    }
-    return []
+    const key = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
+    return loadStoredItem(key, [])
   })
 
-  // Track started or in-progress lessons
+  // Started or in-progress topic IDs
   const [startedTopicIds, setStartedTopicIds] = useState<string[]>(() => {
-    const storageKey = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return []
-      }
-    }
-    return []
+    const key = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
+    return loadStoredItem(key, [])
   })
 
   const startTopic = useCallback(
@@ -229,10 +238,8 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setStartedTopicIds((prev) => {
         if (prev.includes(topicId)) return prev
         const next = [...prev, topicId]
-        const storageKey = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(storageKey, JSON.stringify(next))
-        }
+        const key = isDemo ? 'internhub_demo_started_topics' : `internhub_started_topics_${activeStudentId}`
+        saveStoredItem(key, next)
         return next
       })
     },
@@ -265,64 +272,43 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     async function hydrateRemoteData() {
       try {
-        // 1. Fetch support tickets
-        const { data: remoteTickets } = await supabase
-          .from('support_tickets')
-          .select('*')
-          .eq('student_id', user.id)
-          .order('created_at', { ascending: false })
+        // Parallel fetch for tickets, reflections, completions, and submissions
+        const [ticketsRes, reflectionsRes, completionsRes, submissionsRes] = await Promise.all([
+          supabase
+            .from('support_tickets')
+            .select('*')
+            .eq('student_id', user!.id)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('weekly_reflections')
+            .select('*')
+            .eq('student_id', user!.id)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('topic_completions')
+            .select('topic_id, completed_at')
+            .eq('student_id', user!.id),
+          supabase
+            .from('project_submissions')
+            .select('*')
+            .eq('student_id', user!.id),
+        ])
 
-        if (isMounted && remoteTickets) {
-          const mappedTickets: SupportTicket[] = remoteTickets.map((ticket) => ({
-            id: ticket.id,
-            ticketNumber: ticket.ticket_number,
-            subject: ticket.subject,
-            category: ticket.category as TicketCategory,
-            priority: ticket.priority as TicketPriority,
-            status: (ticket.status as SupportTicket['status']) || 'Open',
-            createdAt: new Date(ticket.created_at).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            }),
-            description: ticket.description,
-            lastReply: ticket.last_reply || undefined,
-          }))
-          setTickets(mappedTickets)
+        if (!isMounted) return
+
+        // 1. Tickets
+        if (ticketsRes.data) {
+          setTickets(ticketsRes.data.map(mapRemoteTicket))
         }
 
-        // 2. Fetch weekly reflections
-        const { data: remoteReflections } = await supabase
-          .from('weekly_reflections')
-          .select('*')
-          .eq('student_id', user.id)
-          .order('created_at', { ascending: false })
-
-        if (isMounted && remoteReflections) {
-          const mappedReflections: WeeklyReflection[] = remoteReflections.map((reflection) => ({
-            id: reflection.id,
-            weekNumber: reflection.week_number,
-            date: new Date(reflection.created_at).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            }),
-            createdAtIso: reflection.created_at,
-            whatWentWell: reflection.what_went_well,
-            blockers: reflection.blockers || '',
-            goalsForNextWeek: reflection.goals_for_next_week,
-          }))
-          setReflections(mappedReflections)
+        // 2. Weekly Reflections
+        if (reflectionsRes.data) {
+          setReflections(reflectionsRes.data.map(mapRemoteReflection))
         }
 
-        // 3. Fetch topic completions
-        const { data: remoteCompletions } = await supabase
-          .from('topic_completions')
-          .select('topic_id, completed_at')
-          .eq('student_id', user.id)
-
-        if (isMounted && remoteCompletions && remoteCompletions.length > 0) {
-          const completionMap = new Map(remoteCompletions.map((comp) => [comp.topic_id, comp.completed_at]))
+        // 3. Topic Completions
+        if (completionsRes.data && completionsRes.data.length > 0) {
+          const completionMap = new Map(completionsRes.data.map((c) => [c.topic_id, c.completed_at]))
           setCourse((prevCourse) => ({
             ...prevCourse,
             modules: prevCourse.modules.map((moduleItem) => ({
@@ -340,53 +326,38 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }))
         }
 
-        // 4. Fetch project submissions
-        const { data: remoteSubmissions } = await supabase
-          .from('project_submissions')
-          .select('*')
-          .eq('student_id', user.id)
-
-        if (isMounted && remoteSubmissions && remoteSubmissions.length > 0) {
-          const submissionMap = new Map(remoteSubmissions.map((submission) => [submission.project_id, submission]))
+        // 4. Project Submissions
+        if (submissionsRes.data && submissionsRes.data.length > 0) {
+          const submissionMap = new Map(submissionsRes.data.map((sub) => [sub.project_id, sub]))
           setProjects((prevProjects) =>
             prevProjects.map((projectItem) => {
-              const remoteSubmission = submissionMap.get(projectItem.id)
-              if (remoteSubmission) {
-                const isStartedOnly =
-                  remoteSubmission.status === 'In Progress' && !remoteSubmission.repo_url && !remoteSubmission.demo_url
-                const startedAtTimestamp =
-                  remoteSubmission.started_at ||
-                  (remoteSubmission.notes?.startsWith('started_at:')
-                    ? remoteSubmission.notes.replace('started_at:', '')
-                    : undefined)
+              const remote = submissionMap.get(projectItem.id)
+              if (!remote) return projectItem
 
-                return {
-                  ...projectItem,
-                  status: (remoteSubmission.status as Project['status']) || 'Under Review',
-                  startedAt: startedAtTimestamp,
-                  submission: isStartedOnly
-                    ? undefined
-                    : {
-                        repoUrl: remoteSubmission.repo_url,
-                        demoUrl: remoteSubmission.demo_url,
-                        notes: remoteSubmission.notes || '',
-                        submittedAt: new Date(remoteSubmission.submitted_at).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        }),
-                        submittedAtIso: remoteSubmission.submitted_at,
-                        grade: remoteSubmission.grade || undefined,
-                        mentorFeedback: remoteSubmission.mentor_feedback || undefined,
-                      },
-                }
+              const isStartedOnly = remote.status === 'In Progress' && !remote.repo_url && !remote.demo_url
+              const startedAt = parseStartedTimestamp(remote)
+
+              return {
+                ...projectItem,
+                status: (remote.status as Project['status']) || 'Under Review',
+                startedAt,
+                submission: isStartedOnly
+                  ? undefined
+                  : {
+                      repoUrl: remote.repo_url || '',
+                      demoUrl: remote.demo_url || '',
+                      notes: remote.notes || '',
+                      submittedAt: formatDate(remote.submitted_at),
+                      submittedAtIso: remote.submitted_at,
+                      grade: remote.grade || undefined,
+                      mentorFeedback: remote.mentor_feedback || undefined,
+                    },
               }
-              return projectItem
             })
           )
 
           // Derive mentor feedback from graded submissions
-          const submissionsWithFeedback = remoteSubmissions.filter((sub) => sub.mentor_feedback || sub.grade)
+          const submissionsWithFeedback = submissionsRes.data.filter((sub) => sub.mentor_feedback || sub.grade)
           if (submissionsWithFeedback.length > 0) {
             const derivedFeedback: FeedbackEvaluation[] = submissionsWithFeedback.map((sub) => {
               const matchedProject = CATALOG_PROJECTS.find((p) => p.id === sub.project_id)
@@ -395,7 +366,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 mentorName: 'Dr. Sarah Lin',
                 mentorRole: 'Staff Architect & Lead Mentor',
                 mentorAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
-                date: new Date(sub.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                date: formatDate(sub.submitted_at),
                 overallRating: sub.grade ? Number((sub.grade / 20).toFixed(1)) : 4.8,
                 criteria: {
                   codeQuality: 5.0,
@@ -413,27 +384,14 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
-        // 5. Aggregate remote learning activity timestamps for persistent streak tracking
-        if (isMounted) {
-          const remoteTimestamps: string[] = []
-          if (remoteCompletions) {
-            for (const comp of remoteCompletions) {
-              if (comp.completed_at) remoteTimestamps.push(comp.completed_at)
-            }
-          }
-          if (remoteSubmissions) {
-            for (const sub of remoteSubmissions) {
-              if (sub.submitted_at) remoteTimestamps.push(sub.submitted_at)
-            }
-          }
-          if (remoteReflections) {
-            for (const reflection of remoteReflections) {
-              if (reflection.created_at) remoteTimestamps.push(reflection.created_at)
-            }
-          }
-          if (remoteTimestamps.length > 0) {
-            setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, ...remoteTimestamps])))
-          }
+        // 5. Aggregate remote activity timestamps for streak calculation
+        const remoteTimestamps: string[] = []
+        completionsRes.data?.forEach((c) => c.completed_at && remoteTimestamps.push(c.completed_at))
+        submissionsRes.data?.forEach((s) => s.submitted_at && remoteTimestamps.push(s.submitted_at))
+        reflectionsRes.data?.forEach((r) => r.created_at && remoteTimestamps.push(r.created_at))
+
+        if (remoteTimestamps.length > 0) {
+          setPersistedActivityTimestamps((prev) => Array.from(new Set([...prev, ...remoteTimestamps])))
         }
       } catch (err) {
         console.warn('Supabase data hydration notice:', err)
@@ -463,55 +421,31 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
         (payload) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const row = payload.new as {
-              project_id: string
-              status: string
-              repo_url?: string
-              demo_url?: string
-              notes?: string
-              submitted_at?: string
-              started_at?: string
-              grade?: number
-              mentor_feedback?: string
-            }
+            const row = payload.new as RemoteSubmissionRow
+            if (!row?.project_id) return
 
-            if (!row || !row.project_id) return
-
-            const isStartedOnly =
-              row.status === 'In Progress' && !row.repo_url && !row.demo_url
-            const startedAtTimestamp =
-              row.started_at ||
-              (row.notes?.startsWith('started_at:')
-                ? row.notes.replace('started_at:', '')
-                : undefined)
+            const isStartedOnly = row.status === 'In Progress' && !row.repo_url && !row.demo_url
+            const startedAtTimestamp = parseStartedTimestamp(row)
 
             setProjects((prev) =>
               prev.map((projectItem) => {
-                if (projectItem.id === row.project_id) {
-                  return {
-                    ...projectItem,
-                    status: (row.status as Project['status']) || projectItem.status,
-                    startedAt: startedAtTimestamp || projectItem.startedAt,
-                    submission: isStartedOnly
-                      ? undefined
-                      : {
-                          repoUrl: row.repo_url || '',
-                          demoUrl: row.demo_url || '',
-                          notes: row.notes || '',
-                          submittedAt: row.submitted_at
-                            ? new Date(row.submitted_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              })
-                            : 'Recently',
-                          submittedAtIso: row.submitted_at,
-                          grade: row.grade || undefined,
-                          mentorFeedback: row.mentor_feedback || undefined,
-                        },
-                  }
+                if (projectItem.id !== row.project_id) return projectItem
+                return {
+                  ...projectItem,
+                  status: (row.status as Project['status']) || projectItem.status,
+                  startedAt: startedAtTimestamp || projectItem.startedAt,
+                  submission: isStartedOnly
+                    ? undefined
+                    : {
+                        repoUrl: row.repo_url || '',
+                        demoUrl: row.demo_url || '',
+                        notes: row.notes || '',
+                        submittedAt: row.submitted_at ? formatDate(row.submitted_at) : 'Recently',
+                        submittedAtIso: row.submitted_at,
+                        grade: row.grade || undefined,
+                        mentorFeedback: row.mentor_feedback || undefined,
+                      },
                 }
-                return projectItem
               })
             )
           } else if (payload.eventType === 'DELETE') {
@@ -582,36 +516,18 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [user, isDemo])
 
-  // Synchronize state changes to client storage
+  // Unified client storage synchronization
   useEffect(() => {
-    const storageKey = isDemo ? 'internhub_demo_course_data' : `internhub_course_${activeStudentId}`
-    localStorage.setItem(storageKey, JSON.stringify(course))
-  }, [course, activeStudentId, isDemo])
+    const prefix = isDemo ? 'internhub_demo' : `internhub`
+    const idSuffix = isDemo ? 'data' : activeStudentId
 
-  useEffect(() => {
-    const storageKey = isDemo ? 'internhub_demo_projects_data' : `internhub_projects_${activeStudentId}`
-    localStorage.setItem(storageKey, JSON.stringify(projects))
-  }, [projects, activeStudentId, isDemo])
-
-  useEffect(() => {
-    const storageKey = isDemo ? 'internhub_demo_reflections_data' : `internhub_reflections_${activeStudentId}`
-    localStorage.setItem(storageKey, JSON.stringify(reflections))
-  }, [reflections, activeStudentId, isDemo])
-
-  useEffect(() => {
-    const storageKey = isDemo ? 'internhub_demo_tickets_data' : `internhub_tickets_${activeStudentId}`
-    localStorage.setItem(storageKey, JSON.stringify(tickets))
-  }, [tickets, activeStudentId, isDemo])
-
-  useEffect(() => {
-    const storageKey = isDemo ? 'internhub_demo_notifications_data' : `internhub_notifications_${activeStudentId}`
-    localStorage.setItem(storageKey, JSON.stringify(notifications))
-  }, [notifications, activeStudentId, isDemo])
-
-  useEffect(() => {
-    const storageKey = isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`
-    localStorage.setItem(storageKey, JSON.stringify(persistedActivityTimestamps))
-  }, [persistedActivityTimestamps, activeStudentId, isDemo])
+    saveStoredItem(`${prefix}_course_${idSuffix}`, course)
+    saveStoredItem(`${prefix}_projects_${idSuffix}`, projects)
+    saveStoredItem(`${prefix}_reflections_${idSuffix}`, reflections)
+    saveStoredItem(`${prefix}_tickets_${idSuffix}`, tickets)
+    saveStoredItem(`internhub_notifications_${activeStudentId}`, notifications)
+    saveStoredItem(isDemo ? 'internhub_demo_activity_timestamps' : `internhub_activity_timestamps_${activeStudentId}`, persistedActivityTimestamps)
+  }, [course, projects, reflections, tickets, notifications, persistedActivityTimestamps, activeStudentId, isDemo])
 
   const unreadNotificationsCount = notifications.filter((item) => !item.isRead).length
 
@@ -660,7 +576,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? Number((feedbackList.reduce((acc, item) => acc + item.overallRating, 0) / feedbackList.length).toFixed(1))
       : 0
 
-  // Combine all persisted qualifying learning activity timestamps (topics, projects, weekly reflections)
+  // Combine all activity timestamps for streak calculations
   const allActivityTimestamps = useMemo(() => {
     const timestamps = new Set<string>(persistedActivityTimestamps)
 
@@ -849,7 +765,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     projectId: string,
     data: { repoUrl: string; demoUrl: string; notes: string }
   ) => {
-    const timestamp = getFormattedTimestamp()
+    const timestamp = formatTimestamp()
     const nowIso = new Date().toISOString()
 
     setProjects((prev) =>
@@ -916,7 +832,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newReflection: WeeklyReflection = {
       id: `ref_${generateToastId()}`,
       weekNumber: weekNum,
-      date: getFormattedDate(),
+      date: formatDate(),
       createdAtIso: nowIso,
       whatWentWell: data.whatWentWell,
       blockers: data.blockers,
@@ -960,7 +876,7 @@ const AppContentProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       category: data.category,
       priority: data.priority,
       status: 'Open',
-      createdAt: getFormattedTimestamp(),
+      createdAt: formatTimestamp(),
       description: data.description,
     }
 

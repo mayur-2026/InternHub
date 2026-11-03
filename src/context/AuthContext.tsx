@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import type { UserProfile } from '../types'
 import { INITIAL_USER, DEMO_USER } from '../data/seedData'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { formatMonthYear } from '../utils/formatters'
+import { loadStoredItem, saveStoredItem, removeStoredItem } from '../utils/storage'
 
 interface AuthContextType {
   user: UserProfile | null
@@ -21,8 +23,8 @@ const AUTH_STORAGE_KEY = 'internhub_auth_user'
 const DEMO_STORAGE_KEY = 'internhub_is_demo'
 const LOGGED_OUT_KEY = 'internhub_logged_out'
 
-// Detect if current browser URL is an incoming OAuth callback from Supabase/Google
-const isOAuthCallback = () => {
+// Detect if current window location contains an incoming OAuth callback
+const isOAuthCallback = (): boolean => {
   if (typeof window === 'undefined') return false
   const hasCode = window.location.search.includes('code=')
   const hasToken = window.location.hash.includes('access_token=')
@@ -42,30 +44,22 @@ const getInitialOAuthError = (): string | null => {
   return msg ? decodeURIComponent(msg.replace(/\+/g, ' ')) : null
 }
 
+const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const hasIncomingCallback = isOAuthCallback()
 
-  // If returning from Google OAuth, clear explicit logged out flag
+  // Clear logged out flag if returning from Google OAuth
   if (hasIncomingCallback && typeof window !== 'undefined') {
-    localStorage.removeItem(LOGGED_OUT_KEY)
+    removeStoredItem(LOGGED_OUT_KEY)
   }
 
   const [user, setUser] = useState<UserProfile | null>(() => {
-    // If incoming OAuth callback, start null and let verification complete
     if (hasIncomingCallback) return null
-
     if (typeof window !== 'undefined' && localStorage.getItem(LOGGED_OUT_KEY) === 'true') {
       return null
     }
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(AUTH_STORAGE_KEY) : null
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return null
-      }
-    }
-    return INITIAL_USER
+    return loadStoredItem<UserProfile | null>(AUTH_STORAGE_KEY, INITIAL_USER)
   })
 
   const [isDemo, setIsDemo] = useState<boolean>(() => {
@@ -79,13 +73,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!isSupabaseConfigured) return
 
-    // Clean up any error query params once read
+    // Clean up query params if error was present
     if (initialOAuthError && typeof window !== 'undefined') {
       window.history.replaceState({}, document.title, window.location.pathname)
       return
     }
 
-    // 1. If PKCE auth code is present, exchange it for a session
+    // 1. Exchange PKCE auth code for session if present
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search)
       const code = searchParams.get('code')
@@ -106,51 +100,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const meta = authUser.user_metadata || {}
       let profileFromDb: Partial<UserProfile> | null = null
 
-      if (isSupabaseConfigured) {
-        try {
-          const { data: dbProfile, error: dbError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', authUser.id)
-            .maybeSingle()
+      try {
+        const { data: dbProfile, error: dbError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authUser.id)
+          .maybeSingle()
 
-          if (!dbError && dbProfile) {
-            profileFromDb = {
-              fullName: dbProfile.full_name || undefined,
-              avatarUrl: dbProfile.avatar_url || undefined,
-              bio: dbProfile.bio ?? '',
-              university: dbProfile.university ?? '',
-              graduationYear: dbProfile.graduation_year ?? '',
-              githubUrl: dbProfile.github_url ?? '',
-              linkedinUrl: dbProfile.linkedin_url ?? '',
-              role: dbProfile.role || 'Student Intern',
-              track: dbProfile.track || 'Full-Stack Web Engineering',
-              joinedDate: dbProfile.created_at
-                ? new Date(dbProfile.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-                : undefined,
-            }
-          } else {
-            // First time login - initialize clean record in Supabase
-            const fullName = String(meta.full_name || meta.name || authUser.email?.split('@')[0] || 'Student Intern')
-            const avatarUrl = String(meta.avatar_url || meta.picture || '')
-            await supabase.from('profiles').upsert(
-              {
-                id: authUser.id,
-                email: authUser.email || '',
-                full_name: fullName,
-                avatar_url: avatarUrl,
-                role: 'Student Intern',
-                track: 'Full-Stack Web Engineering',
-              },
-              { onConflict: 'id' }
-            )
+        if (!dbError && dbProfile) {
+          profileFromDb = {
+            fullName: dbProfile.full_name || undefined,
+            avatarUrl: dbProfile.avatar_url || undefined,
+            bio: dbProfile.bio ?? '',
+            university: dbProfile.university ?? '',
+            graduationYear: dbProfile.graduation_year ?? '',
+            githubUrl: dbProfile.github_url ?? '',
+            linkedinUrl: dbProfile.linkedin_url ?? '',
+            role: dbProfile.role || 'Student Intern',
+            track: dbProfile.track || 'Full-Stack Web Engineering',
+            joinedDate: dbProfile.created_at ? formatMonthYear(dbProfile.created_at) : undefined,
           }
-        } catch (err) {
-          console.warn('Profile sync notice:', err)
+        } else {
+          // Initialize fresh profile on first login
+          const fullName = String(meta.full_name || meta.name || authUser.email?.split('@')[0] || 'Student Intern')
+          const avatarUrl = String(meta.avatar_url || meta.picture || '')
+          await supabase.from('profiles').upsert(
+            {
+              id: authUser.id,
+              email: authUser.email || '',
+              full_name: fullName,
+              avatar_url: avatarUrl,
+              role: 'Student Intern',
+              track: 'Full-Stack Web Engineering',
+            },
+            { onConflict: 'id' }
+          )
         }
+      } catch (err) {
+        console.warn('Profile sync notice:', err)
       }
-
-      const defaultAvatar = `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80`
 
       const syncedUser: UserProfile = {
         id: authUser.id,
@@ -160,7 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           String(meta.full_name || meta.name || authUser.email?.split('@')[0] || 'Student Intern'),
         avatarUrl:
           profileFromDb?.avatarUrl ||
-          String(meta.avatar_url || meta.picture || defaultAvatar),
+          String(meta.avatar_url || meta.picture || DEFAULT_AVATAR),
         bio: profileFromDb?.bio ?? '',
         university: profileFromDb?.university ?? '',
         graduationYear: profileFromDb?.graduationYear ?? '',
@@ -168,20 +156,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         linkedinUrl: profileFromDb?.linkedinUrl ?? '',
         role: profileFromDb?.role || 'Student Intern',
         track: profileFromDb?.track || 'Full-Stack Web Engineering',
-        joinedDate:
-          profileFromDb?.joinedDate ||
-          new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        joinedDate: profileFromDb?.joinedDate || formatMonthYear(),
       }
 
       setUser(syncedUser)
       setIsDemo(false)
-      localStorage.removeItem(LOGGED_OUT_KEY)
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(syncedUser))
-      localStorage.setItem(DEMO_STORAGE_KEY, 'false')
+      removeStoredItem(LOGGED_OUT_KEY)
+      saveStoredItem(AUTH_STORAGE_KEY, syncedUser)
+      saveStoredItem(DEMO_STORAGE_KEY, false)
       setLoading(false)
     }
 
-    // Check existing active session on mount
+    // Check active session on mount
     supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
       if (!sessionError && session?.user) {
         syncUser(session.user)
@@ -190,17 +176,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     })
 
-    // Listen to real Supabase Auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (session?.user) {
-          syncUser(session.user)
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setLoading(false)
-        }
+    // Listen to auth state transitions
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        syncUser(session.user)
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setLoading(false)
       }
-    )
+    })
 
     return () => {
       subscription.unsubscribe()
@@ -211,24 +195,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true)
       setError(null)
-      localStorage.removeItem(LOGGED_OUT_KEY)
+      removeStoredItem(LOGGED_OUT_KEY)
 
       if (!isSupabaseConfigured) {
-        // Fallback simulation if env variables are not yet populated
         setTimeout(() => {
           setUser(INITIAL_USER)
           setIsDemo(true)
-          localStorage.removeItem(LOGGED_OUT_KEY)
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(INITIAL_USER))
-          localStorage.setItem(DEMO_STORAGE_KEY, 'true')
+          removeStoredItem(LOGGED_OUT_KEY)
+          saveStoredItem(AUTH_STORAGE_KEY, INITIAL_USER)
+          saveStoredItem(DEMO_STORAGE_KEY, true)
           setLoading(false)
         }, 600)
         return
       }
 
-      // Explicitly redirect back to /dashboard with origin
       const redirectUrl = `${window.location.origin}/dashboard`
-
       const { data, error: signInError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -255,9 +236,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTimeout(() => {
       setUser(DEMO_USER)
       setIsDemo(true)
-      localStorage.removeItem(LOGGED_OUT_KEY)
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(DEMO_USER))
-      localStorage.setItem(DEMO_STORAGE_KEY, 'true')
+      removeStoredItem(LOGGED_OUT_KEY)
+      saveStoredItem(AUTH_STORAGE_KEY, DEMO_USER)
+      saveStoredItem(DEMO_STORAGE_KEY, true)
       setLoading(false)
     }, 400)
   }
@@ -269,13 +250,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase.auth.signOut()
       }
     } catch {
-      // Ignore signOut network failure on local
+      // Ignore network failure during local logout
     } finally {
       setUser(null)
       setIsDemo(false)
-      localStorage.setItem(LOGGED_OUT_KEY, 'true')
-      localStorage.removeItem(AUTH_STORAGE_KEY)
-      localStorage.removeItem(DEMO_STORAGE_KEY)
+      saveStoredItem(LOGGED_OUT_KEY, true)
+      removeStoredItem(AUTH_STORAGE_KEY)
+      removeStoredItem(DEMO_STORAGE_KEY)
       setLoading(false)
     }
   }
@@ -284,7 +265,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return
     const updated = { ...user, ...updates }
     setUser(updated)
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updated))
+    saveStoredItem(AUTH_STORAGE_KEY, updated)
 
     if (isSupabaseConfigured && !isDemo) {
       try {

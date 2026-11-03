@@ -2,133 +2,34 @@ import React, { useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import type { Topic, Module } from '../types'
+import type { Topic } from '../types'
 import { PageHeader } from '../components/ui/FeedbackStates'
 import { Card } from '../components/ui/Card'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { Button } from '../components/ui/Button'
-import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/FormField'
-import { getTopicResources } from '../data/learningResources'
 import { CourseVideoPlayer } from '../components/learning/CourseVideoPlayer'
 import { LessonQuizModal } from '../components/learning/LessonQuizModal'
+import { CourseCard } from '../components/learning/CourseCard'
+import { LessonRow } from '../components/learning/LessonRow'
+import { LessonDetailModal } from '../components/learning/LessonDetailModal'
+import { getCourseMeta } from '../data/courseMeta'
+import { loadStoredItem, saveStoredItem } from '../utils/storage'
+import { formatDuration } from '../utils/formatters'
 import {
   Search,
-  CheckCircle2,
-  Clock,
   BookOpen,
-  Code,
-  ExternalLink,
-  ChevronRight,
+  Clock,
   Filter,
   Sparkles,
-  Play,
-  Pause,
-  ArrowRight,
   ArrowLeft,
-  Check,
   GraduationCap,
   Trophy,
-  ChevronLeft,
-  ChevronDown,
   Lock,
-  HelpCircle,
+  ChevronRight,
+  Check,
+  Play,
 } from 'lucide-react'
-
-interface CourseMeta {
-  category: string
-  difficulty: 'Beginner' | 'Intermediate' | 'Advanced'
-  thumbnail: string
-  accentColor: string
-}
-
-const COURSE_METADATA: Record<string, CourseMeta> = {
-  mod_1: {
-    category: 'Frontend',
-    difficulty: 'Intermediate',
-    thumbnail: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=600&auto=format&fit=crop&q=80',
-    accentColor: '#7950F2',
-  },
-  mod_2: {
-    category: 'Architecture',
-    difficulty: 'Advanced',
-    thumbnail: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&auto=format&fit=crop&q=80',
-    accentColor: '#3B82F6',
-  },
-  mod_3: {
-    category: 'Backend',
-    difficulty: 'Intermediate',
-    thumbnail: 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d?w=600&auto=format&fit=crop&q=80',
-    accentColor: '#10B981',
-  },
-  mod_4: {
-    category: 'Full-Stack',
-    difficulty: 'Advanced',
-    thumbnail: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=600&auto=format&fit=crop&q=80',
-    accentColor: '#F59E0B',
-  },
-  mod_5: {
-    category: 'DevOps',
-    difficulty: 'Advanced',
-    thumbnail: 'https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?w=600&auto=format&fit=crop&q=80',
-    accentColor: '#6366F1',
-  },
-}
-
-function getCourseMeta(module: Module): CourseMeta {
-  if (COURSE_METADATA[module.id]) {
-    return COURSE_METADATA[module.id]
-  }
-  return {
-    category: module.weekNumber <= 2 ? 'Frontend' : module.weekNumber <= 3 ? 'Backend' : 'DevOps',
-    difficulty: module.weekNumber <= 1 ? 'Beginner' : module.weekNumber <= 3 ? 'Intermediate' : 'Advanced',
-    thumbnail: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80',
-    accentColor: '#7950F2',
-  }
-}
-
-/**
- * Thumbnail component with compact aspect ratio and graceful fallback
- */
-const CourseThumbnail: React.FC<{
-  src: string
-  alt: string
-  category: string
-  accentColor: string
-}> = ({ src, alt, category, accentColor }) => {
-  const [hasError, setHasError] = useState(false)
-
-  if (hasError) {
-    return (
-      <div
-        className="w-full h-full flex flex-col items-center justify-center p-4 text-center select-none bg-gradient-to-br from-slate-50 to-slate-100"
-        style={{
-          borderBottom: `3px solid ${accentColor}`,
-        }}
-      >
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center mb-1.5 shadow-xs"
-          style={{ backgroundColor: `${accentColor}15` }}
-        >
-          <BookOpen className="w-5 h-5" style={{ color: accentColor }} />
-        </div>
-        <span className="text-[11px] font-bold tracking-wider uppercase text-[#0F172A]">
-          {category}
-        </span>
-      </div>
-    )
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      onError={() => setHasError(true)}
-      loading="lazy"
-      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-    />
-  )
-}
 
 export const LearningPage: React.FC = () => {
   const {
@@ -153,27 +54,17 @@ export const LearningPage: React.FC = () => {
   const [savingTopicId, setSavingTopicId] = useState<string | null>(null)
   const [lockedAlert, setLockedAlert] = useState<{ target: number; prereq: number } | null>(null)
   const [expandedOverviewTopicIds, setExpandedOverviewTopicIds] = useState<string[]>([])
+
+  const watchedStorageKey = isDemo ? 'internhub_demo_watched_videos' : `internhub_watched_videos_${user?.id}`
   const [watchedTopicIds, setWatchedTopicIds] = useState<string[]>(() => {
-    const storageKey = isDemo ? 'internhub_demo_watched_videos' : `internhub_watched_videos_${user?.id}`
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return []
-      }
-    }
-    return []
+    return loadStoredItem(watchedStorageKey, [])
   })
 
   const handleVideoWatched = (topicId: string) => {
     setWatchedTopicIds((prev) => {
       if (prev.includes(topicId)) return prev
       const updated = [...prev, topicId]
-      const storageKey = isDemo ? 'internhub_demo_watched_videos' : `internhub_watched_videos_${user?.id}`
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(updated))
-      } catch {}
+      saveStoredItem(watchedStorageKey, updated)
       return updated
     })
   }
@@ -184,17 +75,16 @@ export const LearningPage: React.FC = () => {
     )
   }
 
-  // Active selected course module if student opened a course
+  // Active course module when student navigates into a course
   const activeCourse = useMemo(() => {
     if (!selectedCourseId) return null
     return course.modules.find((m) => m.id === selectedCourseId) || null
   }, [course.modules, selectedCourseId])
 
-  // Sequential locking rule: topic at index is locked if any previous topic is not completed
+  // Sequential lesson locking rule: lesson at index is locked if any preceding lesson is incomplete
   const isLessonLocked = useMemo(() => {
     return (index: number): boolean => {
-      if (!activeCourse) return false
-      if (index === 0) return false // First lesson is always unlocked
+      if (!activeCourse || index === 0) return false
       for (let j = 0; j < index; j++) {
         if (!activeCourse.topics[j]?.isCompleted) {
           return true
@@ -204,19 +94,18 @@ export const LearningPage: React.FC = () => {
     }
   }, [activeCourse])
 
-  // Determine currently active topic for the video player
+  // Determine currently active lesson for the video player
   const activeTopic = useMemo(() => {
     if (!activeCourse || activeCourse.topics.length === 0) return null
     if (activeTopicId) {
       const found = activeCourse.topics.find((t) => t.id === activeTopicId)
       if (found) return found
     }
-    // Default to first incomplete lesson, or first lesson
     const firstIncomplete = activeCourse.topics.find((t) => !t.isCompleted)
     return firstIncomplete || activeCourse.topics[0]
   }, [activeCourse, activeTopicId])
 
-  // Calculate overall curriculum metrics
+  // Calculate curriculum aggregate metrics
   const totalMinutes = useMemo(() => {
     return course.modules.reduce(
       (sum, m) => sum + m.topics.reduce((tSum, t) => tSum + t.durationMinutes, 0),
@@ -226,7 +115,6 @@ export const LearningPage: React.FC = () => {
 
   const totalHours = Math.round((totalMinutes / 60) * 10) / 10
 
-  // Other courses in the curriculum (for the section below lessons)
   const otherCourses = useMemo(() => {
     if (!activeCourse) return []
     return course.modules.filter((m) => m.id !== activeCourse.id)
@@ -234,16 +122,17 @@ export const LearningPage: React.FC = () => {
 
   // Filter courses in the catalog
   const filteredCourses = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+
     return course.modules.filter((mod) => {
       const meta = getCourseMeta(mod)
       const matchesSearch =
-        mod.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        mod.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        meta.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        !q ||
+        mod.title.toLowerCase().includes(q) ||
+        mod.description.toLowerCase().includes(q) ||
+        meta.category.toLowerCase().includes(q) ||
         mod.topics.some(
-          (t) =>
-            t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            t.description.toLowerCase().includes(searchQuery.toLowerCase())
+          (t) => t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
         )
 
       if (!matchesSearch) return false
@@ -281,43 +170,38 @@ export const LearningPage: React.FC = () => {
     })
   }, [course.modules, searchQuery, categoryFilter])
 
-  const handleSelectCourse = (courseId: string) => {
-    setSearchParams({ course: courseId })
-    setLockedAlert(null)
+  const scrollToTop = () => {
     if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
       try {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       } catch {
-        // jsdom fallback
+        // Fallback for jsdom in test environments
       }
     }
+  }
+
+  const handleSelectCourse = (courseId: string) => {
+    setSearchParams({ course: courseId })
+    setLockedAlert(null)
+    scrollToTop()
   }
 
   const handleBackToCourses = () => {
     setSearchParams({})
     setLockedAlert(null)
-    if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
-      try {
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-      } catch {
-        // jsdom fallback
-      }
-    }
+    scrollToTop()
   }
 
-  // Active course metrics if a course is selected
+  // Active course metrics
   const activeCourseMeta = activeCourse ? getCourseMeta(activeCourse) : null
   const activeCourseTotal = activeCourse ? activeCourse.topics.length : 0
-  const activeCourseDone = activeCourse
-    ? activeCourse.topics.filter((t) => t.isCompleted).length
-    : 0
+  const activeCourseDone = activeCourse ? activeCourse.topics.filter((t) => t.isCompleted).length : 0
   const activeCoursePercent =
     activeCourseTotal > 0 ? Math.round((activeCourseDone / activeCourseTotal) * 100) : 0
   const activeCourseDuration = activeCourse
     ? activeCourse.topics.reduce((acc, t) => acc + t.durationMinutes, 0)
     : 0
 
-  // Locked lesson notification trigger
   const handleLockedClick = (targetLessonNum: number, prereqLessonNum: number) => {
     setLockedAlert({ target: targetLessonNum, prereq: prereqLessonNum })
     setTimeout(() => {
@@ -325,7 +209,6 @@ export const LearningPage: React.FC = () => {
     }, 4500)
   }
 
-  // Select a lesson to watch
   const handleSelectLesson = (topic: Topic, index: number) => {
     if (isLessonLocked(index)) {
       let prereqIndex = 0
@@ -344,13 +227,11 @@ export const LearningPage: React.FC = () => {
     setLockedAlert(null)
   }
 
-  // Functional Checkbox Toggle with saving indicator and error handling
   const handleToggleTopic = async (topicId: string) => {
     if (savingTopicId) return
     setSavingTopicId(topicId)
     try {
       await toggleTopic(topicId)
-      // If modal is open for this topic, update modal state
       setSelectedTopic((prev) =>
         prev && prev.id === topicId ? { ...prev, isCompleted: !prev.isCompleted } : prev
       )
@@ -360,7 +241,6 @@ export const LearningPage: React.FC = () => {
     }
   }
 
-  // Functional Lesson Action: Start Lesson (transitions status to In Progress)
   const handleStartLesson = (topic: Topic, index: number) => {
     if (isLessonLocked(index)) {
       let prereqIndex = 0
@@ -378,7 +258,6 @@ export const LearningPage: React.FC = () => {
     setSelectedTopic(topic)
   }
 
-  // Functional Lesson Action: Continue Learning (opens saved progress)
   const handleContinueLesson = (topic: Topic, index: number) => {
     if (isLessonLocked(index)) {
       handleLockedClick(index + 1, index)
@@ -389,13 +268,11 @@ export const LearningPage: React.FC = () => {
     setSelectedTopic(topic)
   }
 
-  // Functional Lesson Action: Review Lesson (revisits without resetting status)
   const handleReviewLesson = (topic: Topic) => {
     setActiveTopicId(topic.id)
     setSelectedTopic(topic)
   }
 
-  // Passing quiz marks the lesson as completed in Supabase and unlocks the next lesson
   const handlePassQuiz = async (topicId: string, score: number = 100) => {
     setSavingTopicId(topicId)
     try {
@@ -420,7 +297,6 @@ export const LearningPage: React.FC = () => {
     }
   }
 
-  // Advance to next lesson (if incomplete, triggers the required knowledge test)
   const handleCompleteCurrentAndNext = async (currentTopicId: string) => {
     const currentTopic = activeCourse?.topics.find((t) => t.id === currentTopicId)
     if (!currentTopic) return
@@ -438,13 +314,12 @@ export const LearningPage: React.FC = () => {
     }
   }
 
-  // Navigation inside the Lesson Detail Modal
   const currentModalIndex = useMemo(() => {
     if (!selectedTopic || !activeCourse) return -1
     return activeCourse.topics.findIndex((t) => t.id === selectedTopic.id)
   }, [selectedTopic, activeCourse])
 
-  const handlePrevLesson = () => {
+  const handlePrevLessonInModal = () => {
     if (!activeCourse || currentModalIndex <= 0) return
     const prevTopic = activeCourse.topics[currentModalIndex - 1]
     if (prevTopic) {
@@ -454,7 +329,7 @@ export const LearningPage: React.FC = () => {
     }
   }
 
-  const handleNextLesson = () => {
+  const handleNextLessonInModal = () => {
     if (!activeCourse || currentModalIndex >= activeCourse.topics.length - 1) return
     const nextIndex = currentModalIndex + 1
     const nextTopic = activeCourse.topics[nextIndex]
@@ -468,12 +343,6 @@ export const LearningPage: React.FC = () => {
       setSelectedTopic(nextTopic)
     }
   }
-
-  // Resources for the active modal topic
-  const activeResources = useMemo(() => {
-    if (!selectedTopic) return []
-    return getTopicResources(selectedTopic.id, selectedTopic.resourceLink)
-  }, [selectedTopic])
 
   const activeTopicIndex = activeCourse && activeTopic
     ? activeCourse.topics.findIndex((t) => t.id === activeTopic.id)
@@ -492,7 +361,7 @@ export const LearningPage: React.FC = () => {
       {/* Course Detail View with Real Video Player & Lessons List */}
       {activeCourse && activeCourseMeta ? (
         <div className="space-y-6">
-          {/* Top Breadcrumb & Navigation Bar */}
+          {/* Breadcrumb Navigation */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <button
               type="button"
@@ -513,7 +382,7 @@ export const LearningPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Course Title & Progress Bar */}
+          {/* Course Title & Progress Bar Card */}
           <div className="bg-white rounded-[14px] border border-[#E2E8F0] p-4 sm:p-5 shadow-xs">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -574,7 +443,7 @@ export const LearningPage: React.FC = () => {
             </div>
           )}
 
-          {/* 1. Real Video Player Section */}
+          {/* Real Video Player Section */}
           {activeTopic && (
             <CourseVideoPlayer
               key={activeTopic.id}
@@ -598,12 +467,10 @@ export const LearningPage: React.FC = () => {
             />
           )}
 
-          {/* 2. Lessons in This Class Section (matching reference design) */}
+          {/* Lessons in This Class Section */}
           <div className="pt-2 space-y-4">
-            {/* Purple accent line */}
             <div className="w-full h-1 bg-[#7950F2] rounded-full" />
 
-            {/* Header: Lessons in This Class */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-[20px] sm:text-[22px] font-bold text-[#0F172A] tracking-tight">
@@ -639,467 +506,34 @@ export const LearningPage: React.FC = () => {
                 const isCompleted = topic.isCompleted
                 const isInProgress = !isCompleted && startedTopicIds.includes(topic.id)
                 const isExpanded = expandedOverviewTopicIds.includes(topic.id)
-                const topicResources = getTopicResources(topic.id, topic.resourceLink)
+                const prereqTopic = index > 0 ? activeCourse.topics[index - 1] : undefined
 
-                // Active Lesson (Dark Highlight Bar)
-                if (isActive) {
-                  return (
-                    <div
-                      key={topic.id}
-                      className="p-3.5 sm:p-4 rounded-[8px] bg-[#0F172A] text-white flex flex-col gap-3 shadow-md border border-slate-800 transition-all select-none"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          {/* Left Action Button: Pause/Play or Review */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleContinueLesson(topic, index)
-                            }}
-                            title={isCompleted ? 'Review Lesson' : 'Continue Learning'}
-                            aria-label={isCompleted ? 'Review Lesson' : 'Continue Learning'}
-                            className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-colors cursor-pointer focus-ring ${
-                              isCompleted
-                                ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                                : 'bg-white/15 hover:bg-white/25 text-white'
-                            }`}
-                          >
-                            {isCompleted ? (
-                              <CheckCircle2 className="w-4 h-4 text-[#20C997]" />
-                            ) : (
-                              <Pause className="w-4 h-4 fill-current" />
-                            )}
-                          </button>
-
-                          {/* Hidden button for accessible screen-reader toggle & test compatibility */}
-                          <button
-                            type="button"
-                            onClick={() => handleToggleTopic(topic.id)}
-                            aria-label={isCompleted ? 'Mark incomplete' : 'Mark complete'}
-                            className="sr-only"
-                          />
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[14px] sm:text-[15px] font-semibold text-white leading-snug">
-                                {index + 1}. {topic.title}
-                              </span>
-                              {isCompleted && (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10.5px] font-bold">
-                                  <Check className="w-3 h-3" />
-                                  <span>Completed</span>
-                                  {topic.quizScore !== undefined && (
-                                    <span className="px-1.5 py-0.2 bg-emerald-400/25 rounded text-emerald-200 font-semibold">
-                                      {topic.quizScore}% Score
-                                    </span>
-                                  )}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-2 text-[11.5px] text-slate-300 mt-0.5">
-                              <span>{topic.durationMinutes} minutes</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Right: Overview Dropdown Button */}
-                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleOverview(topic.id)
-                            }}
-                            aria-expanded={isExpanded}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-semibold transition-all cursor-pointer border ${
-                              isExpanded
-                                ? 'bg-[#7950F2] text-white border-[#7950F2] shadow-xs'
-                                : 'bg-white/10 hover:bg-white/20 text-white border-white/20 shadow-xs'
-                            }`}
-                          >
-                            <span>Overview</span>
-                            <ChevronDown
-                              className={`w-3.5 h-3.5 transition-transform duration-200 shrink-0 ${
-                                isExpanded ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Overview Dropdown Panel */}
-                      {isExpanded && (
-                        <div
-                          className="mt-2 pt-3 border-t border-slate-700/80 text-left space-y-3 animate-in fade-in duration-150"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {/* Lesson Description */}
-                          <div>
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                              Lesson Summary
-                            </span>
-                            <p className="text-[13px] text-slate-200 leading-relaxed">
-                              {topic.description}
-                            </p>
-                          </div>
-
-                          {/* Key Objectives */}
-                          {topic.keyTakeaways && topic.keyTakeaways.length > 0 && (
-                            <div>
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-                                Curriculum Topics &amp; Objectives
-                              </span>
-                              <ul className="space-y-1.5">
-                                {topic.keyTakeaways.map((takeaway, tIdx) => (
-                                  <li
-                                    key={tIdx}
-                                    className="flex items-start gap-2 text-[12.5px] text-slate-200 bg-slate-800/80 p-2.5 rounded-md border border-slate-700"
-                                  >
-                                    <span className="w-4 h-4 rounded-full bg-[#7950F2] text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
-                                      {tIdx + 1}
-                                    </span>
-                                    <span>{takeaway}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-
-                          {/* Verified Reference Resources */}
-                          {topicResources.length > 0 && (
-                            <div>
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-                                Verified Reference Documentation
-                              </span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {topicResources.map((res, rIdx) => (
-                                  <a
-                                    key={rIdx}
-                                    href={res.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="p-2.5 rounded-md bg-slate-800/80 hover:bg-slate-800 border border-slate-700 hover:border-[#7950F2] transition-colors flex items-center justify-between gap-2 text-[12px] text-slate-200 group/link"
-                                  >
-                                    <span className="line-clamp-1 group-hover/link:text-[#A78BFA] transition-colors">
-                                      {res.title}
-                                    </span>
-                                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover/link:text-[#A78BFA] shrink-0" />
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                }
-
-                // Locked Lesson Row with Overview Dropdown
-                if (isLocked) {
-                  return (
-                    <div
-                      key={topic.id}
-                      onClick={() => {
-                        handleLockedClick(index + 1, index)
-                        toggleOverview(topic.id)
-                      }}
-                      className="p-3.5 sm:p-4 rounded-[8px] bg-slate-50/90 border border-slate-200/80 hover:border-slate-300 transition-all flex flex-col gap-3 cursor-pointer select-none"
-                    >
-                      {/* Main Row */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleLockedClick(index + 1, index)
-                              toggleOverview(topic.id)
-                            }}
-                            title="Locked Lesson"
-                            aria-label="Locked Lesson"
-                            className="w-8 h-8 rounded-md bg-slate-200/70 hover:bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 cursor-pointer transition-colors"
-                          >
-                            <Lock className="w-4 h-4" />
-                          </button>
-
-                          <div className="min-w-0 flex-1">
-                            <span className="text-[14px] sm:text-[15px] font-medium text-slate-700">
-                              {index + 1}. {topic.title}
-                            </span>
-                            <div className="flex items-center gap-2 text-[11.5px] text-slate-400 mt-0.5">
-                              <span>{topic.durationMinutes} minutes</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Right: Overview Dropdown Button */}
-                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleOverview(topic.id)
-                            }}
-                            aria-expanded={isExpanded}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-semibold transition-all cursor-pointer border ${
-                              isExpanded
-                                ? 'bg-[#F3F0FF] text-[#7950F2] border-[#7950F2]/30 shadow-xs'
-                                : 'bg-white hover:bg-slate-100 text-[#475569] border-slate-300 shadow-xs'
-                            }`}
-                          >
-                            <span>Overview</span>
-                            <ChevronDown
-                              className={`w-3.5 h-3.5 transition-transform duration-200 shrink-0 ${
-                                isExpanded ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Overview Dropdown Panel */}
-                      {isExpanded && (
-                        <div
-                          className="mt-2 pt-3 border-t border-slate-200 text-left space-y-3 animate-in fade-in duration-150"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {/* Prerequisite Alert Banner */}
-                          <div className="p-3 bg-amber-50/90 rounded-lg border border-amber-200 flex items-start gap-2.5">
-                            <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                            <div className="text-[12.5px] text-amber-900 leading-relaxed">
-                              <span className="font-bold">Lesson Locked:</span> This lesson unlocks automatically once you complete{' '}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (activeCourse.topics[index - 1]) {
-                                    handleSelectLesson(activeCourse.topics[index - 1], index - 1)
-                                  }
-                                }}
-                                className="font-bold text-[#7950F2] hover:underline cursor-pointer inline-flex items-center gap-0.5"
-                              >
-                                Lesson {index} ({activeCourse.topics[index - 1]?.title})
-                                <ArrowRight className="w-3 h-3 inline" />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Lesson Description */}
-                          <div>
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
-                              Lesson Summary
-                            </span>
-                            <p className="text-[13px] text-[#0F172A] leading-relaxed">
-                              {topic.description}
-                            </p>
-                          </div>
-
-                          {/* Key Objectives */}
-                          {topic.keyTakeaways && topic.keyTakeaways.length > 0 && (
-                            <div>
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1.5">
-                                Curriculum Topics &amp; Objectives
-                              </span>
-                              <ul className="space-y-1.5">
-                                {topic.keyTakeaways.map((takeaway, tIdx) => (
-                                  <li
-                                    key={tIdx}
-                                    className="flex items-start gap-2 text-[12.5px] text-[#334155] bg-white p-2.5 rounded-md border border-slate-200"
-                                  >
-                                    <span className="w-4 h-4 rounded-full bg-[#F3F0FF] text-[#7950F2] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
-                                      {tIdx + 1}
-                                    </span>
-                                    <span>{takeaway}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-
-                          {/* Practical Code Notice */}
-                          {topic.codeSnippet && (
-                            <div className="flex items-center gap-2 text-[12px] text-[#7950F2] font-medium pt-0.5">
-                              <Code className="w-3.5 h-3.5 shrink-0" />
-                              <span>Includes hands-on code exercises and architectural patterns</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                }
-
-                // Unlocked Inactive Lesson Row
                 return (
-                  <div
+                  <LessonRow
                     key={topic.id}
-                    onClick={() => handleSelectLesson(topic, index)}
-                    className="p-3.5 sm:p-4 rounded-[8px] bg-white border border-[#E2E8F0] hover:border-[#7950F2]/40 hover:bg-slate-50/60 transition-all duration-150 flex flex-col gap-3 cursor-pointer group"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {/* Left Action Button: Play or Review */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            isCompleted ? handleReviewLesson(topic) : handleStartLesson(topic, index)
-                          }}
-                          title={isCompleted ? 'Review Lesson' : 'Start Lesson'}
-                          aria-label={isCompleted ? 'Review Lesson' : 'Start Lesson'}
-                          className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-colors cursor-pointer focus-ring ${
-                            isCompleted
-                              ? 'bg-[#E6FCF5] hover:bg-[#D3F9E8] text-[#20C997]'
-                              : 'bg-slate-100 hover:bg-[#F3F0FF] text-[#7950F2]'
-                          }`}
-                        >
-                          {isCompleted ? (
-                            <CheckCircle2 className="w-4 h-4 text-[#20C997]" />
-                          ) : (
-                            <Play className="w-4 h-4 fill-current text-[#7950F2]" />
-                          )}
-                        </button>
-
-                        {/* Hidden button for accessible screen-reader toggle & test compatibility */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleToggleTopic(topic.id)
-                          }}
-                          aria-label={isCompleted ? 'Mark incomplete' : 'Mark complete'}
-                          className="sr-only"
-                        />
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[14px] sm:text-[15px] font-medium text-[#0F172A] group-hover:text-[#7950F2] transition-colors">
-                              {index + 1}. {topic.title}
-                            </span>
-                            {isCompleted ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#E6FCF5] text-[#087F5B] text-[10.5px] font-bold">
-                                <Check className="w-3 h-3" />
-                                <span>Completed</span>
-                                {topic.quizScore !== undefined && (
-                                  <span className="px-1.5 py-0.2 bg-emerald-100 rounded text-emerald-800 font-semibold">
-                                    {topic.quizScore}% Score
-                                  </span>
-                                )}
-                              </span>
-                            ) : isInProgress ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#F3F0FF] text-[#7950F2] text-[10.5px] font-bold">
-                                In Progress
-                              </span>
-                            ) : null}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-[11.5px] text-[#64748B] mt-0.5">
-                            <span>{topic.durationMinutes} minutes</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right: Overview Dropdown Button */}
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleOverview(topic.id)
-                          }}
-                          aria-expanded={isExpanded}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-semibold transition-all cursor-pointer border ${
-                            isExpanded
-                              ? 'bg-[#F3F0FF] text-[#7950F2] border-[#7950F2]/30 shadow-xs'
-                              : 'bg-white hover:bg-slate-100 text-[#475569] border-slate-300 shadow-xs'
-                          }`}
-                        >
-                          <span>Overview</span>
-                          <ChevronDown
-                            className={`w-3.5 h-3.5 transition-transform duration-200 shrink-0 ${
-                              isExpanded ? 'rotate-180' : ''
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Overview Dropdown Panel */}
-                    {isExpanded && (
-                      <div
-                        className="mt-2 pt-3 border-t border-slate-200 text-left space-y-3 animate-in fade-in duration-150"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {/* Lesson Description */}
-                        <div>
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
-                            Lesson Summary
-                          </span>
-                          <p className="text-[13px] text-[#0F172A] leading-relaxed">
-                            {topic.description}
-                          </p>
-                        </div>
-
-                        {/* Key Objectives */}
-                        {topic.keyTakeaways && topic.keyTakeaways.length > 0 && (
-                          <div>
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1.5">
-                              Curriculum Topics &amp; Objectives
-                            </span>
-                            <ul className="space-y-1.5">
-                              {topic.keyTakeaways.map((takeaway, tIdx) => (
-                                <li
-                                  key={tIdx}
-                                  className="flex items-start gap-2 text-[12.5px] text-[#334155] bg-white p-2.5 rounded-md border border-slate-200"
-                                >
-                                  <span className="w-4 h-4 rounded-full bg-[#F3F0FF] text-[#7950F2] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
-                                    {tIdx + 1}
-                                  </span>
-                                  <span>{takeaway}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Verified Reference Resources */}
-                        {topicResources.length > 0 && (
-                          <div>
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1.5">
-                              Verified Reference Documentation
-                            </span>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {topicResources.map((res, rIdx) => (
-                                <a
-                                  key={rIdx}
-                                  href={res.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="p-2.5 rounded-md bg-white hover:bg-[#F8FAFF] border border-slate-200 hover:border-[#7950F2] transition-colors flex items-center justify-between gap-2 text-[12px] text-[#0F172A] group/link"
-                                >
-                                  <span className="line-clamp-1 group-hover/link:text-[#7950F2] transition-colors">
-                                    {res.title}
-                                  </span>
-                                  <ExternalLink className="w-3.5 h-3.5 text-[#64748B] group-hover/link:text-[#7950F2] shrink-0" />
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                    topic={topic}
+                    index={index}
+                    isActive={isActive}
+                    isLocked={isLocked}
+                    isInProgress={isInProgress}
+                    isExpanded={isExpanded}
+                    prereqTopic={prereqTopic}
+                    onToggleOverview={toggleOverview}
+                    onSelectLesson={handleSelectLesson}
+                    onToggleTopic={handleToggleTopic}
+                    onStartLesson={handleStartLesson}
+                    onContinueLesson={handleContinueLesson}
+                    onReviewLesson={handleReviewLesson}
+                    onLockedClick={handleLockedClick}
+                  />
                 )
               })}
             </div>
           </div>
 
-          {/* 3. More Courses in This Curriculum (Directly Below Lessons Section - matching reference) */}
+          {/* More Courses in This Curriculum */}
           {otherCourses.length > 0 && (
             <div className="pt-6 space-y-4">
-              {/* Section Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-200/80 pt-6">
                 <div>
                   <h3 className="text-[19px] sm:text-[21px] font-bold text-[#0F172A] tracking-tight">
@@ -1114,15 +548,11 @@ export const LearningPage: React.FC = () => {
                 </span>
               </div>
 
-              {/* Vertical List of Course Cards matching reference screenshot */}
               <div className="space-y-3">
                 {otherCourses.map((mod) => {
                   const meta = getCourseMeta(mod)
                   const totalLessons = mod.topics.length
                   const durationMins = mod.topics.reduce((acc, t) => acc + t.durationMinutes, 0)
-                  const hours = Math.floor(durationMins / 60)
-                  const mins = durationMins % 60
-                  const formattedDuration = hours > 0 ? `${hours} hrs ${mins} mins` : `${mins} mins`
                   const completedCount = mod.topics.filter((t) => t.isCompleted).length
                   const isModCompleted = totalLessons > 0 && completedCount === totalLessons
                   const isModInProgress = completedCount > 0 && !isModCompleted
@@ -1133,9 +563,7 @@ export const LearningPage: React.FC = () => {
                       onClick={() => handleSelectCourse(mod.id)}
                       className="group bg-white rounded-[16px] border border-[#E2E8F0] hover:border-[#7950F2]/40 hover:shadow-md transition-all duration-200 p-3 sm:p-4 flex items-center justify-between gap-4 cursor-pointer select-none"
                     >
-                      {/* Left: Thumbnail + Info */}
                       <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
-                        {/* Rounded Thumbnail matching reference */}
                         <div className="w-24 sm:w-28 h-16 sm:h-20 rounded-[12px] overflow-hidden bg-slate-100 shrink-0 relative shadow-xs">
                           <img
                             src={meta.thumbnail}
@@ -1146,27 +574,23 @@ export const LearningPage: React.FC = () => {
                           <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
                         </div>
 
-                        {/* Course Title & Metadata matching reference */}
                         <div className="min-w-0 flex-1 space-y-1">
                           <h4 className="text-[14.5px] sm:text-[15.5px] font-bold text-[#0F172A] group-hover:text-[#7950F2] transition-colors leading-snug line-clamp-1">
                             {mod.title}
                           </h4>
 
-                          {/* Subtitle 1: Lessons Count with Icon */}
                           <div className="flex items-center gap-1.5 text-[12px] text-[#64748B]">
                             <BookOpen className="w-3.5 h-3.5 text-[#7950F2] shrink-0" />
                             <span>{totalLessons} lessons</span>
                           </div>
 
-                          {/* Subtitle 2: Duration with Clock Icon */}
                           <div className="flex items-center gap-1.5 text-[12px] text-[#64748B]">
                             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span>{formattedDuration}</span>
+                            <span>{formatDuration(durationMins)}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Right: Status Badge & Chevron Action */}
                       <div className="flex items-center gap-3 shrink-0">
                         {isModCompleted ? (
                           <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-200">
@@ -1196,14 +620,13 @@ export const LearningPage: React.FC = () => {
       ) : (
         /* Course Catalog View */
         <div className="space-y-8">
-          {/* Page Header */}
           <PageHeader
             title="Learning Curriculum & Courses"
             subtitle="Course Catalog • Explore industry-aligned engineering courses, video lessons, and interactive practical topics."
             badge="Official Curriculum"
           />
 
-          {/* Curriculum Metric Strip */}
+          {/* Curriculum Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card padding="md" className="flex items-center gap-3.5">
               <div className="w-11 h-11 rounded-xl bg-[#F3F0FF] text-[#7950F2] flex items-center justify-center shrink-0">
@@ -1274,7 +697,6 @@ export const LearningPage: React.FC = () => {
                 />
               </div>
 
-              {/* Filter Pills */}
               <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
                 <span className="text-[12px] font-medium text-[#64748B] flex items-center gap-1 shrink-0">
                   <Filter className="w-3.5 h-3.5" /> Filter:
@@ -1326,284 +748,36 @@ export const LearningPage: React.FC = () => {
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-              {filteredCourses.map((module) => {
-                const meta = getCourseMeta(module)
-                const totalLessons = module.topics.length
-                const completedLessons = module.topics.filter((t) => t.isCompleted).length
-                const progressPct =
-                  totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0
-                const isCompleted = progressPct === 100
-                const isInProgress = progressPct > 0 && !isCompleted
-                const durationMins = module.topics.reduce((acc, t) => acc + t.durationMinutes, 0)
-
-                return (
-                  <div
-                    key={module.id}
-                    onClick={() => handleSelectCourse(module.id)}
-                    className="group bg-white rounded-[14px] border border-[#E2E8F0] hover:border-[#7950F2]/40 hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden text-left shadow-xs cursor-pointer"
-                  >
-                    {/* Compact Thumbnail Container (Reduced Height) */}
-                    <div className="relative w-full aspect-[16/10] overflow-hidden bg-slate-100">
-                      <CourseThumbnail
-                        src={meta.thumbnail}
-                        alt={module.title}
-                        category={meta.category}
-                        accentColor={meta.accentColor}
-                      />
-
-                      {/* Subtle Dark Gradient for readability */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none" />
-
-                      {/* Top Badges: Category & Difficulty */}
-                      <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 pointer-events-none">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-white/95 text-[#0F172A] shadow-xs backdrop-blur-xs whitespace-nowrap truncate max-w-[130px]">
-                          {meta.category}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-[#0F172A]/80 text-white backdrop-blur-xs shrink-0">
-                          {meta.difficulty}
-                        </span>
-                      </div>
-
-                      {/* Bottom Info on Thumbnail */}
-                      <div className="absolute bottom-2.5 right-2.5 flex items-center justify-end text-white text-[11.5px] pointer-events-none">
-                        {isCompleted ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10.5px] font-bold shadow-xs">
-                            <Check className="w-3 h-3" /> Completed
-                          </span>
-                        ) : isInProgress ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#7950F2] text-white text-[10.5px] font-bold shadow-xs">
-                            <Play className="w-2.5 h-2.5 fill-current" /> In Progress
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900/80 text-white text-[10.5px] font-medium backdrop-blur-xs">
-                            Not Started
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Course Card Details */}
-                    <div className="p-3.5 sm:p-4 flex-1 flex flex-col justify-between">
-                      <div>
-                        {/* Course Name */}
-                        <h3 className="text-[14px] sm:text-[15px] font-bold text-[#0F172A] line-clamp-1 group-hover:text-[#7950F2] transition-colors leading-snug">
-                          {module.title}
-                        </h3>
-
-                        {/* Short Description (2 lines) */}
-                        <p className="text-[12.5px] text-[#64748B] line-clamp-2 mt-1 leading-[18px] min-h-[36px]">
-                          {module.description}
-                        </p>
-
-                        {/* Lessons & Duration Row */}
-                        <div className="flex items-center gap-2.5 mt-2.5 text-[11.5px] text-[#64748B] pt-2 border-t border-[#F1F5F9]">
-                          <span className="flex items-center gap-1 font-semibold text-[#0F172A]">
-                            <BookOpen className="w-3.5 h-3.5 text-[#7950F2]" />
-                            {totalLessons} {totalLessons === 1 ? 'Lesson' : 'Lessons'}
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            {durationMins} mins
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Progress Indicator & Action Button */}
-                      <div className="mt-3 pt-2.5 border-t border-[#F1F5F9] space-y-2.5">
-                        {/* Student Progress Bar */}
-                        <div>
-                          <div className="flex items-center justify-between text-[11px] font-semibold mb-1">
-                            <span className="text-[#64748B]">
-                              {completedLessons}/{totalLessons} Done
-                            </span>
-                            <span className={isCompleted ? 'text-emerald-600' : 'text-[#7950F2]'}>
-                              {progressPct}%
-                            </span>
-                          </div>
-                          <div className="w-full h-1.5 bg-[#EEF1F7] rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all duration-300"
-                              style={{
-                                width: `${progressPct}%`,
-                                backgroundColor: isCompleted ? '#10B981' : '#7950F2',
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Action CTA with guaranteed inline text and icon */}
-                        <Button
-                          variant={isInProgress ? 'primary' : 'outline'}
-                          size="sm"
-                          className="w-full text-[12.5px] whitespace-nowrap"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleSelectCourse(module.id)
-                          }}
-                        >
-                          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
-                            {isCompleted ? (
-                              <>
-                                <span>Review Course</span>
-                                <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-                              </>
-                            ) : isInProgress ? (
-                              <>
-                                <span>Continue Learning</span>
-                                <ArrowRight className="w-3.5 h-3.5 shrink-0" />
-                              </>
-                            ) : (
-                              <>
-                                <span>Start Learning</span>
-                                <span className="sr-only">View Course</span>
-                                <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-                              </>
-                            )}
-                          </span>
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+              {filteredCourses.map((module) => (
+                <CourseCard
+                  key={module.id}
+                  module={module}
+                  onSelect={handleSelectCourse}
+                />
+              ))}
             </div>
           )}
         </div>
       )}
 
       {/* Lesson Detail Modal */}
-      {selectedTopic && (
-        <Modal
-          isOpen={Boolean(selectedTopic)}
-          onClose={() => setSelectedTopic(null)}
-          title={selectedTopic.title}
-          description={`Course ${activeCourse?.weekNumber || 1} • Estimated Time: ${
-            selectedTopic.durationMinutes
-          } mins • ${selectedTopic.isCompleted ? 'Status: Completed' : 'Status: In Progress'}`}
-        >
-          <div className="space-y-6 pt-2">
-            {/* 1. Overview */}
-            <div className="p-4 rounded-[12px] bg-[#F8FAFC] border border-[#E2E8F0]">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
-                Lesson Overview
-              </span>
-              <p className="text-[14px] text-[#0F172A] leading-[22px]">
-                {selectedTopic.description}
-              </p>
-            </div>
-
-            {/* 2. Key Learning Objectives */}
-            <div className="space-y-2.5">
-              <h4 className="text-[14px] font-bold text-[#0F172A] flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#20C997]" /> Key Learning Objectives
-              </h4>
-              <ul className="space-y-2">
-                {selectedTopic.keyTakeaways.map((takeaway, idx) => (
-                  <li
-                    key={idx}
-                    className="flex items-start gap-2.5 text-[13px] text-[#25324B]/90 bg-white p-3 rounded-[8px] border border-[#E2E8F0]"
-                  >
-                    <span className="w-5 h-5 rounded-full bg-[#E6FCF5] text-[#087F5B] text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
-                      {idx + 1}
-                    </span>
-                    <span>{takeaway}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* 3. Verified Learning Resources & References */}
-            {activeResources.length > 0 && (
-              <div className="space-y-2.5">
-                <h4 className="text-[14px] font-bold text-[#0F172A] flex items-center gap-2">
-                  <ExternalLink className="w-4 h-4 text-[#3B82F6]" /> Verified Reference Documentation
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {activeResources.map((res, idx) => (
-                    <a
-                      key={idx}
-                      href={res.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-3 rounded-[8px] border border-[#E2E8F0] hover:border-[#7950F2] hover:shadow-xs transition-all flex items-start justify-between gap-2 group bg-white"
-                    >
-                      <div>
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-[#7950F2] block">
-                          {res.platform}
-                        </span>
-                        <span className="text-[13px] font-medium text-[#0F172A] group-hover:text-[#7950F2] transition-colors line-clamp-1">
-                          {res.title}
-                        </span>
-                      </div>
-                      <ExternalLink className="w-4 h-4 text-[#64748B] group-hover:text-[#7950F2] shrink-0 mt-0.5" />
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Modal Bottom Action Controls */}
-            <div className="pt-4 border-t border-[#F1F5F9] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              {/* Previous / Next Lesson Navigation */}
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePrevLesson}
-                  disabled={currentModalIndex <= 0}
-                  icon={<ChevronLeft className="w-4 h-4" />}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNextLesson}
-                  disabled={!activeCourse || currentModalIndex >= activeCourse.topics.length - 1}
-                  icon={<ChevronRight className="w-4 h-4" />}
-                >
-                  Next
-                </Button>
-              </div>
-
-              {/* Take Lesson Test CTA Button */}
-              <div className="flex items-center gap-2 justify-end">
-                {!selectedTopic.isCompleted && !watchedTopicIds.includes(selectedTopic.id) ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={true}
-                    className="opacity-70 cursor-not-allowed border-slate-300 text-slate-500"
-                    icon={<Lock className="w-4 h-4 text-slate-400" />}
-                  >
-                    Watch Video First to Unlock Test
-                  </Button>
-                ) : (
-                  <Button
-                    variant={selectedTopic.isCompleted ? 'secondary' : 'primary'}
-                    size="sm"
-                    onClick={() => {
-                      const topicToTest = selectedTopic
-                      setSelectedTopic(null)
-                      setQuizTopic(topicToTest)
-                    }}
-                    icon={
-                      selectedTopic.isCompleted ? (
-                        <Check className="w-4 h-4 text-emerald-600" />
-                      ) : (
-                        <HelpCircle className="w-4 h-4" />
-                      )
-                    }
-                  >
-                    {selectedTopic.isCompleted ? 'Retake Lesson Test' : 'Take Lesson Test to Complete'}
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <LessonDetailModal
+        topic={selectedTopic}
+        courseNumber={activeCourse?.weekNumber || 1}
+        currentIndex={currentModalIndex}
+        totalTopics={activeCourse?.topics.length || 0}
+        hasWatchedVideo={Boolean(
+          selectedTopic &&
+          (selectedTopic.isCompleted || watchedTopicIds.includes(selectedTopic.id))
+        )}
+        onClose={() => setSelectedTopic(null)}
+        onPrev={handlePrevLessonInModal}
+        onNext={handleNextLessonInModal}
+        onStartTest={(topic) => {
+          setSelectedTopic(null)
+          setQuizTopic(topic)
+        }}
+      />
 
       {/* Interactive Lesson Quiz Modal */}
       {quizTopic && (
